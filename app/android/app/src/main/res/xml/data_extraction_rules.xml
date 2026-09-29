@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup and device-transfer rules.
+
+  Private keys live in the Keystore and never enter a backup. Cloud backup and
+  device-to-device transfer are disabled outright rather than filtered,
+  because a key restored onto a second device would silently break this
+  device's identity binding.
+
+  The user can therefore not migrate a SecureChat identity to a new phone; they
+  verify their phone number again and generate a fresh identity. That is the
+  correct trade-off: convenience is not worth cloning long-term keys.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,90 @@
+# ===========================================================================
+# SecureChat - repository-wide ignore rules
+#
+# Two things must never be committed from this repo:
+#   1. server/.env        - real JWT secret, DB URI with password, S3 keys
+#   2. app/android/*.jks  - the release signing key
+# Losing the .jks means existing installs can never be updated in place, so
+# it is treated like a private key: back it up outside the repo, never commit.
+# ===========================================================================
+
+# --- Secrets and local configuration ---------------------------------------
+.env
+.env.*
+!.env.example
+**/key.properties
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.pfx
+**/*.pem
+id_rsa*
+app/android/local.properties
+
+# --- Node ------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# --- Flutter / Dart ---------------------------------------------------------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+app/build/
+coverage/
+*.symbols
+app.*.symbols
+app.*.map.json
+app.*.lock
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/ephemeral/
+.migrate_working_dir/
+
+# --- Build output -----------------------------------------------------------
+# dist/ holds ~110 MB of signed APKs. Build them with tools/build-apk.ps1,
+# or fetch them from a CI release - never from the repository.
+dist/
+*.apk
+*.aab
+*.ipa
+*.dmg
+*.msi
+*.exe
+
+# --- Runtime data: databases, media blobs, logs ------------------------------
+# server/var/db holds the embedded MongoDB data files and server/var/media
+# holds user-uploaded ciphertext. Neither belongs in version control.
+server/var/
+var/
+*.log
+media/
+db/
+
+# --- Debug / test scratch output ---------------------------------------------
+dbg.txt
+msg.log
+tap2.txt
+test-out.txt
+qa*.txt
+*.tmp
+*.bak
+*.pid
+
+# --- Editors and IDEs --------------------------------------------------------
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- OS ----------------------------------------------------------------------

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Transport policy.
+
+  A single APK is distributed to arbitrary users, each pointing it at their
+  own SecureChat server. That address is not knowable at build time, so this
+  policy has to admit cleartext to any host the user themselves configures.
+
+  The trade-off, stated plainly: on http://, message CONTENT is still
+  end-to-end encrypted (AES-256-GCM under a Double Ratchet the server cannot
+  compute), so the only thing exposed on the wire is metadata - IP addresses,
+  timing, and message sizes. The app surfaces a "no TLS" warning in Settings
+  whenever the configured server is http://, so the user makes that choice
+  knowingly rather than by accident.
+
+  What this does NOT protect against is an active network attacker who can see
+  the request stream. For a hosted server, use https:// and the base-config
+  below already requires certificates from the system trust store, so a
+  self-signed or misconfigured host fails closed rather than silently downgrading.
+-->
+<network-security-config>
+    <!--
+      Default posture: HTTPS only, with no user-installed CAs. A production
+      server must present a publicly trusted certificate.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+

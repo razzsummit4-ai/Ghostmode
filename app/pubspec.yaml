@@ -1,0 +1,68 @@
+name: securechat
+description: "SecureChat - End-to-end encrypted messenger. Private keys never leave the device."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # --- Cryptography -----------------------------------------------------------
+  # Audited implementations of the exact primitives the Signal Protocol is
+  # defined over: Ed25519 identity signing, X25519 ECDH, HKDF/HMAC-SHA256 and
+  # AES-256-GCM. No custom curve maths or cipher construction appears anywhere
+  # in this project.
+  cryptography: ^2.9.0
+  # SHA-512, used by the Ed25519 -> X25519 key conversion (RFC 7748 / 8032).
+  crypto: ^3.0.7
+
+  # --- Storage ----------------------------------------------------------------
+  # The ONLY place private key material is ever written. Backed by the Android
+  # Keystore and the iOS Keychain.
+  flutter_secure_storage: ^11.2.0
+  # Holds the JWT and UI preferences. Never used for key material.
+  shared_preferences: ^2.5.5
+
+  # --- Networking -------------------------------------------------------------
+  http: ^1.6.0
+  socket_io_client: ^3.1.6
+
+  # --- Media ------------------------------------------------------------------
+  image_picker: ^1.2.3
+  file_picker: ^13.1.0
+  path: ^1.9.1
+
+  # --- Local mesh (Bluetooth, ~100 m) -----------------------------------------
+  # Used by mesh/ble_mesh.dart. The transport is still scaffolded; see the
+  # "Not provided" section of the README.
+  flutter_reactive_ble: ^5.6.0
+  permission_handler: ^13.0.2
+
+  # --- UI ---------------------------------------------------------------------
+  intl: ^0.20.3
+  uuid: ^4.6.0
+  provider: ^6.1.5+1
+
+  # --- Offline mesh (Nearby Connections, ~100 m) --------------------------------
+  # Powers services/offline_ghost_service.dart. A local path, not a version
+  # constraint, because the published 1.1.2 is unmaintained and its
+  # android/build.gradle calls jcenter(), which Gradle 8 removed - it fails the
+  # build before compiling anything. third_party/flutter_nearby_connections is
+  # the same source with a Gradle 8 compatible build script; see the comments
+  # in that file before changing it.
+  #
+  # SECURITY: the mesh channel is PLAINTEXT. It is not protected by the Double
+  # Ratchet, and the screen says so permanently.
+  flutter_nearby_connections:
+    path: ../third_party/flutter_nearby_connections
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

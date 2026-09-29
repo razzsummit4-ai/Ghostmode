@@ -1,0 +1,62 @@
+// Gradle 8 compatible build script for flutter_nearby_connections.
+//
+// Why this file exists: the published package (v1.1.2, unmaintained since 2023)
+// declares `jcenter()` in its own buildscript, and `jcenter()` was removed in
+// Gradle 8. The project therefore fails to evaluate with
+//   "Could not find method jcenter() for arguments []"
+// before a single line of Kotlin is compiled.
+//
+// The original also pinned AGP 3.5.0 and Kotlin 1.7.10 in its own buildscript.
+// When Flutter includes a plugin as a subproject, the root project's buildscript
+// supplies the Android Gradle Plugin, so those pins are removed here and only the
+// repository list is corrected. Nothing else about the plugin's behaviour changes.
+//
+// Verified against AGP 8.x / Gradle 8.x.
+
+group 'com.nankai.flutter_nearby_connections'
+version '1.1.2'
+
+// mavenCentral() replaces the removed jcenter(). google() is kept for the
+// Android Gradle Plugin's own artifacts.
+repositories {
+    google()
+    mavenCentral()
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace 'com.nankai.flutter_nearby_connections'
+    compileSdk 34
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        // The Nearby Connections API is unavailable below 21, and 16 has not
+        // been a valid Flutter minSdk for years.
+        minSdk 23
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+
+    lint {
+        disable 'InvalidPackage'
+    }
+}
+
+dependencies {
+    api 'com.google.android.gms:play-services-nearby:17.0.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'com.google.android.gms:play-services-location:17.1.0'
+    implementation 'androidx.core:core-ktx:1.9.0'
+}
