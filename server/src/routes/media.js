@@ -36,7 +36,7 @@ router.post(
 
     const contentType = assertContentType(body.contentType);
     const objectKey = buildKey();
-    const target = await storage().createUploadUrl({ objectKey, contentType });
+    const target = await storage().createUploadUrl({ objectKey, contentType }, req);
 
     logger.info('media.presigned', {
       userId: String(req.user._id),

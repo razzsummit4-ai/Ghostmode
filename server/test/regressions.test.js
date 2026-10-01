@@ -57,11 +57,55 @@ describe('regressions', () => {
 
   // Bug 3: a password longer than the scrypt limit must be rejected before it
   // is ever handed to the KDF.
+  // Bug 3: a password longer than the scrypt limit must be rejected before it
+  // is ever handed to the KDF.
   test('an over-long password cannot reach the password hasher', async () => {
     const res = await api()
       .post('/api/auth/register')
       .send({ phone: '+10000009007', password: 'x'.repeat(5000) });
     assert.equal(res.status, 400);
+  });
+
+  // Bug 7: the local storage driver built upload URLs from config.PUBLIC_URL.
+  // That value defaults to http://localhost:4000 and is not set on Render, so
+  // every presigned upload URL pointed at the server's own loopback address and
+  // no attachment could ever be sent from a phone. When PUBLIC_URL is a real
+  // address it is still honoured, so this checks the unset/loopback case.
+  test('a presigned upload URL never points at loopback', async () => {
+    const { config } = await import('../src/config.js');
+    const alice = await registerUser(api(), '+10000009008', 17);
+
+    // Simulate a deployment where PUBLIC_URL was never configured.
+    const original = config.PUBLIC_URL;
+    Object.defineProperty(config, 'PUBLIC_URL', {
+      value: 'http://localhost:4000',
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      const res = await api()
+        .post('/api/media/presign')
+        .set(auth(alice.token))
+        .set('Host', 'chat.example.test')
+        .send({ contentType: 'image/jpeg', size: 1024, kind: 'image' })
+        .expect(200);
+
+      assert.ok(
+        !res.body.uploadUrl.includes('localhost'),
+        `upload URL must not point at loopback, got ${res.body.uploadUrl}`,
+      );
+      assert.ok(
+        res.body.uploadUrl.startsWith('http://chat.example.test/api/media/blob/'),
+        `upload URL must use the request host, got ${res.body.uploadUrl}`,
+      );
+    } finally {
+      Object.defineProperty(config, 'PUBLIC_URL', {
+        value: original,
+        configurable: true,
+        writable: true,
+      });
+    }
   });
 });
 

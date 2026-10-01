@@ -56,6 +56,35 @@ function assertContentType(value) {
 }
 
 // ---------------------------- local driver ----------------------------------
+
+/**
+ * The origin clients should use to reach this server.
+ *
+ * `config.PUBLIC_URL` is the configured answer, but it is unset on most
+ * deployments - including Render, where the default is `http://localhost:4000`.
+ * A presigned upload URL built from that is unreachable from a phone, so every
+ * attachment silently fails even though the server is healthy.
+ *
+ * So when the configured value still points at a loopback address, the request's
+ * own scheme and host are used instead: behind a proxy `trust proxy` makes
+ * `protocol` correct, and the Host header is exactly the address the client
+ * already reached us on. Anything explicitly configured and non-loopback is
+ * honoured unchanged, which keeps LAN and on-premise setups working.
+ */
+export function publicOrigin(req) {
+  const configured = String(config.PUBLIC_URL || '');
+  const isLoopback =
+    /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(configured) ||
+    configured === '';
+
+  if (!isLoopback) return configured.replace(/\/+$/, '');
+  if (!req) return configured.replace(/\/+$/, '') || 'http://localhost:4000';
+
+  const host = req.headers?.host;
+  if (!host) return configured.replace(/\/+$/, '') || 'http://localhost:4000';
+  return `${req.protocol}://${host}`;
+}
+
 function localDriver() {
   const root = path.resolve(config.MEDIA_DIR);
   const safePath = (objectKey) => {
@@ -66,18 +95,18 @@ function localDriver() {
 
   return {
     name: 'local',
-    async createUploadUrl({ objectKey, contentType }) {
+    async createUploadUrl({ objectKey, contentType }, req) {
       await fs.mkdir(path.dirname(safePath(objectKey)), { recursive: true });
       return {
-        uploadUrl: `${config.PUBLIC_URL}/api/media/blob/${encodeURIComponent(objectKey)}`,
+        uploadUrl: `${publicOrigin(req)}/api/media/blob/${encodeURIComponent(objectKey)}`,
         method: 'PUT',
         headers: { 'content-type': contentType },
         expiresInSeconds: config.PRESIGN_TTL_SECONDS,
       };
     },
-    async createDownloadUrl({ objectKey }) {
+    async createDownloadUrl({ objectKey }, req) {
       return {
-        downloadUrl: `${config.PUBLIC_URL}/api/media/blob/${encodeURIComponent(objectKey)}`,
+        downloadUrl: `${publicOrigin(req)}/api/media/blob/${encodeURIComponent(objectKey)}`,
         expiresInSeconds: config.PRESIGN_TTL_SECONDS,
       };
     },
