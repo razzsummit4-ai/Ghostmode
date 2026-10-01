@@ -35,6 +35,25 @@ const SERVICE_NAME = 'SecureChat E2E Messenger';
 const SERVICE_VERSION = '1.0.0';
 
 /**
+ * Where the installable builds live.
+ *
+ * The APKs are deliberately not in this repository: `.gitignore` excludes
+ * `dist/` because it holds ~110 MB of signed binaries, and Render builds from
+ * git, so the running server has no APK to hand out. Publishing them as release
+ * assets keeps the repository light and gives a stable, versioned URL per tag.
+ *
+ * Bump RELEASE_TAG when cutting a new build so the page points at the newest
+ * binaries instead of silently serving an old one.
+ */
+const RELEASE_TAG = 'v1.0.0';
+const RELEASE_BASE = `https://github.com/razzsummit4-ai/Ghostmode/releases/download/${RELEASE_TAG}/`;
+
+const DOWNLOADS = [
+  { file: 'SecureChat-arm64-v8a.apk', label: 'Download for most phones', size: '19 MB' },
+  { file: 'SecureChat-1.0.0.apk', label: 'Universal (any device)', size: '53 MB' },
+];
+
+/**
  * The page a browser sees at the root.
  *
  * Self-contained on purpose: no CDN, no web fonts, no external requests. The
@@ -61,6 +80,18 @@ function landingPage(host, dbUp, proto) {
          <p style="opacity:.7;font-size:13px;margin-top:-6px">Copy everything above, including <b>https://</b>.</p>`
       : `<p><code>${safeUrl}</code></p>`;
 
+  // The APKs live in a GitHub release rather than in this repository: dist/ is
+  // gitignored on purpose (it holds ~110 MB of signed binaries) and Render
+  // builds from git, so the server has no copy to serve. The download links
+  // therefore point at the release assets, which are public and immutable for a
+  // given tag.
+  const downloads = DOWNLOADS.map(
+    ({ file, label, size }) =>
+      `<a class="dl" href="${escapeHtml(RELEASE_BASE + encodeURIComponent(file))}" download>` +
+      `<span class="dlname">${escapeHtml(label)}</span>` +
+      `<span class="dlmeta">${escapeHtml(file)} &middot; ${escapeHtml(size)}</span></a>`,
+  ).join('');
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -68,22 +99,37 @@ function landingPage(host, dbUp, proto) {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${SERVICE_NAME}</title>
 <style>
-  body{font-family:system-ui,sans-serif;background:#0b0f14;color:#e6edf3;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  body{font-family:system-ui,sans-serif;background:#0b0f14;color:#e6edf3;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px 0}
   .card{background:#111820;border:1px solid #1f2a36;border-radius:16px;padding:32px;max-width:480px;width:90%;box-shadow:0 10px 30px rgba(0,0,0,.4)}
   h1{margin:0 0 8px;font-size:24px}
+  h2{margin:26px 0 10px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#8b949e;font-weight:600}
   code{background:#1f2a36;padding:2px 6px;border-radius:6px;word-break:break-all}
   .ok{color:#2fbc82}
   .bad{color:#f85149}
+  .dl{display:block;text-decoration:none;color:inherit;background:#0d1117;border:1px solid #1f2a36;border-radius:10px;padding:11px 13px;margin-bottom:8px}
+  .dl:hover{border-color:#2fbc82}
+  .dlname{display:block;font-weight:600;font-size:14.5px}
+  .dlmeta{display:block;opacity:.6;font-size:12px;margin-top:2px;word-break:break-all}
+  .hint{opacity:.7;font-size:13px;margin:8px 0 0}
 </style>
 </head>
 <body>
   <div class="card">
     <h1>&#128274; ${SERVICE_NAME}</h1>
     <p>${status}</p>
-    <p>API Address to enter in app:</p>
+
+    <h2>Get the app</h2>
+    ${downloads}
+    <p class="hint">Android will ask you to allow installs from this browser. Both builds are
+      signed with the same key, so installing over an older copy keeps your keys and chats.</p>
+
+    <h2>Connect</h2>
+    <p>Open the app, go to <b>Settings &rarr; Server address</b>, and enter:</p>
     ${addressBlock}
-    <p style="opacity:.7;font-size:13px">Version ${SERVICE_VERSION} &middot; Health: /health</p>
-    <p style="opacity:.7;font-size:13px;margin-bottom:0">Relays ciphertext and public keys only. Stores no plaintext and holds no private keys.</p>
+    <p class="hint">Copy the whole line, including <b>https://</b>.</p>
+
+    <p class="hint">Version ${SERVICE_VERSION} &middot; Health: /health</p>
+    <p class="hint" style="margin-bottom:0">Relays ciphertext and public keys only. Stores no plaintext and holds no private keys.</p>
   </div>
 </body>
 </html>`;
