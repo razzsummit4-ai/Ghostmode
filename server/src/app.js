@@ -44,11 +44,22 @@ const SERVICE_VERSION = '1.0.0';
  * @param {string|undefined} host  the Host header the browser used to reach us
  * @param {boolean} dbUp           whether the database is currently connected
  */
-function landingPage(host, dbUp) {
-  const safeHost = escapeHtml(host || 'ghostmode.onrender.com');
+function landingPage(host, dbUp, proto) {
+  const scheme = proto === 'http' ? 'http' : 'https';
+  const safeUrl = escapeHtml(`${scheme}://${host || 'ghostmode.onrender.com'}`);
   const status = dbUp
     ? '<span class="ok">&#9679; Server is live &amp; DB connected</span>'
     : '<span class="bad">&#9679; Server is live &amp; DB unreachable</span>';
+
+  // The full URL is what the user must paste. The app prefixes a bare hostname
+  // with http:// (AppConfig.normaliseUrl), and a hosted server answers that
+  // with a 301 to https, which the app's HTTP client does not follow - so the
+  // copyable value has to carry the scheme itself.
+  const addressBlock =
+    scheme === 'https'
+      ? `<p><code>${safeUrl}</code></p>
+         <p style="opacity:.7;font-size:13px;margin-top:-6px">Copy everything above, including <b>https://</b>.</p>`
+      : `<p><code>${safeUrl}</code></p>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -70,7 +81,7 @@ function landingPage(host, dbUp) {
     <h1>&#128274; ${SERVICE_NAME}</h1>
     <p>${status}</p>
     <p>API Address to enter in app:</p>
-    <p><code>${safeHost}</code></p>
+    ${addressBlock}
     <p style="opacity:.7;font-size:13px">Version ${SERVICE_VERSION} &middot; Health: /health</p>
     <p style="opacity:.7;font-size:13px;margin-bottom:0">Relays ciphertext and public keys only. Stores no plaintext and holds no private keys.</p>
   </div>
@@ -128,7 +139,7 @@ app.get('/', (req, res) => {
   // are answered here so neither audience needs a second URL or a redirect.
   if (accept.includes('text/html')) {
     res.set('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(landingPage(req.headers.host, dbUp));
+    return res.status(200).send(landingPage(req.headers.host, dbUp, req.protocol));
   }
 
   return res.status(200).json({
