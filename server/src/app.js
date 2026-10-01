@@ -13,6 +13,8 @@ import chatRoutes from './routes/chats.js';
 import userRoutes from './routes/users.js';
 import mediaRoutes from './routes/media.js';
 import { isConnected } from './db.js';
+import downloadRoutes from './routes/download.js';
+import { DOWNLOADS } from './routes/downloads.js';
 
 /**
  * Escape text going into the landing page.
@@ -33,25 +35,6 @@ function escapeHtml(str) {
 
 const SERVICE_NAME = 'SecureChat E2E Messenger';
 const SERVICE_VERSION = '1.0.0';
-
-/**
- * Where the installable builds live.
- *
- * The APKs are deliberately not in this repository: `.gitignore` excludes
- * `dist/` because it holds ~110 MB of signed binaries, and Render builds from
- * git, so the running server has no APK to hand out. Publishing them as release
- * assets keeps the repository light and gives a stable, versioned URL per tag.
- *
- * Bump RELEASE_TAG when cutting a new build so the page points at the newest
- * binaries instead of silently serving an old one.
- */
-const RELEASE_TAG = 'v1.0.0';
-const RELEASE_BASE = `https://github.com/razzsummit4-ai/Ghostmode/releases/download/${RELEASE_TAG}/`;
-
-const DOWNLOADS = [
-  { file: 'SecureChat-arm64-v8a.apk', label: 'Download for most phones', size: '19 MB' },
-  { file: 'SecureChat-1.0.0.apk', label: 'Universal (any device)', size: '53 MB' },
-];
 
 /**
  * The page a browser sees at the root.
@@ -80,16 +63,16 @@ function landingPage(host, dbUp, proto) {
          <p style="opacity:.7;font-size:13px;margin-top:-6px">Copy everything above, including <b>https://</b>.</p>`
       : `<p><code>${safeUrl}</code></p>`;
 
-  // The APKs live in a GitHub release rather than in this repository: dist/ is
-  // gitignored on purpose (it holds ~110 MB of signed binaries) and Render
-  // builds from git, so the server has no copy to serve. The download links
-  // therefore point at the release assets, which are public and immutable for a
-  // given tag.
+  // Downloads are served by this server at /download/<file> rather than linked
+  // straight to the release. On a phone a link to github.com means resolving a
+  // second host and following a cross-site redirect, and that hop is what fails
+  // on mobile while the same link works on a laptop. Serving it from the origin
+  // the user is already on removes that hop entirely.
   const downloads = DOWNLOADS.map(
     ({ file, label, size }) =>
-      `<a class="dl" href="${escapeHtml(RELEASE_BASE + encodeURIComponent(file))}" download>` +
+      `<a class="dl" href="/download/${encodeURIComponent(file)}" download="${escapeHtml(file)}">` +
       `<span class="dlname">${escapeHtml(label)}</span>` +
-      `<span class="dlmeta">${escapeHtml(file)} &middot; ${escapeHtml(size)}</span></a>`,
+      `<span class="dlmeta">${escapeHtml(size)} &middot; Android APK</span></a>`,
   ).join('');
 
   return `<!doctype html>
@@ -237,6 +220,11 @@ app.get('/', (req, res) => {
   app.use('/api/chats', chatRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/media', mediaRoutes);
+
+  // APK downloads. Mounted outside /api so the path on the page mirrors the
+  // href, and deliberately unauthenticated: it serves a public installer that
+  // the phone fetches before the user has signed in to anything.
+  app.use('/download', downloadRoutes);
 
   /**
    * Deliberate anti-goal guard rail.

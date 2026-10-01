@@ -121,8 +121,35 @@ describe('root content negotiation', () => {
 
   test('the page offers the APK downloads', async () => {
     const res = await api().get('/').set('User-Agent', AGENT_ANDROID).set('Accept', '*/*');
-    assert.match(res.text, /releases\/download\/v1\.0\.0/);
+    assert.match(res.text, /href="\/download\/SecureChat-arm64-v8a\.apk"/);
     assert.match(res.text, /SecureChat-arm64-v8a\.apk/);
+  });
+
+  // Bug 9: the download link pointed straight at github.com. On a phone that
+  // means resolving a second host and following a cross-site redirect, and that
+  // hop is what failed on mobile while the same link worked on a laptop. The
+  // page must offer a same-origin path instead.
+  test('download links stay on this origin', async () => {
+    const res = await api().get('/').set('User-Agent', AGENT_ANDROID).set('Accept', '*/*');
+    const hrefs = [...res.text.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    assert.ok(hrefs.length > 0, 'the page must link at least one build');
+    for (const href of hrefs) {
+      assert.ok(
+        href.startsWith('/download/'),
+        `download link must be same-origin, got ${href}`,
+      );
+      assert.equal(
+        href.includes('github.com'),
+        false,
+        'the page must not send a phone off to github.com',
+      );
+    }
+  });
+
+  test('an unknown build is refused, never proxied', async () => {
+    const res = await api().get('/download/not-a-real-build.apk');
+    assert.equal(res.status, 404);
+    assert.equal(res.body.error, 'not_found');
   });
 });
 
