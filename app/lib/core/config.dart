@@ -20,6 +20,16 @@ class AppConfig {
 
   static const appName = 'SecureChat';
 
+  /// True when the address in use is the Android emulator's alias for the host
+  /// machine.
+  ///
+  /// 10.0.2.2 only resolves inside the emulator, so on a physical phone every
+  /// request to it fails. It is still the right value for a build made with no
+  /// `--dart-define`, which is why it is checked rather than changed: the UI
+  /// uses this to explain the failure instead of showing a bare network error.
+  static bool get usesEmulatorHost =>
+      apiBaseUrl.contains('10.0.2.2') || apiBaseUrl.contains('localhost');
+
   /// How many one-time pre-keys a fresh install publishes.
   ///
   /// The Signal recommendation is 100; the client tops this pool back up

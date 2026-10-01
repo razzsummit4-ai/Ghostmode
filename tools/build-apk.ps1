@@ -41,8 +41,20 @@ Set-Location $buildRoot
 Write-Output "=== pub get ==="
 flutter pub get 2>&1 | Out-String | Write-Output
 
-Write-Output "=== build apk (release) ==="
-flutter build apk --release 2>&1 | Out-String | Write-Output
+# The server this build points at by default.
+#
+# This MUST be passed as a --dart-define. Without it AppConfig falls back to
+# http://10.0.2.2:4000, which is the Android emulator's alias for the host
+# machine and resolves nowhere on a physical phone - so the APK installs and
+# then every request fails, which looks like the app being broken rather than
+# the address being wrong.
+#
+# Override for a self-hosted build without editing this file:
+#   $env:API_BASE_URL = 'http://192.168.0.100:4000'
+#   pwsh -File tools\build-apk.ps1
+$apiBaseUrl = if ($env:API_BASE_URL) { $env:API_BASE_URL } else { 'https://ghostmode.onrender.com' }
+Write-Output "=== building for $apiBaseUrl ==="
+flutter build apk --release --dart-define=API_BASE_URL=$apiBaseUrl 2>&1 | Out-String | Write-Output
 
 Write-Output "=== exit=$LASTEXITCODE ==="
 $apks = Get-ChildItem "$buildRoot\build\app\outputs\flutter-apk" -Filter *.apk -ErrorAction SilentlyContinue

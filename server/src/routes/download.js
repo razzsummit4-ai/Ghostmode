@@ -86,7 +86,12 @@ router.get('/:asset', async (req, res) => {
     // than as an untyped file the installer will refuse.
     res.setHeader('Content-Disposition', `attachment; filename="${entry.file}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    // A published build must never be served stale. GitHub release assets are
+    // immutable per tag, so an aggressive cache here would keep handing out a
+    // previous APK after a rebuild - and an APK is exactly the kind of thing
+    // where "works on my machine" is indistinguishable from "wrong server
+    // compiled in". Re-downloading is cheap; installing the wrong build is not.
+    res.setHeader('Cache-Control', 'no-cache');
 
     logger.info('download.started', { asset: entry.file });
     // Streamed, never buffered: a 53 MB universal build must not sit in memory.

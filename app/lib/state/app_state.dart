@@ -155,6 +155,17 @@ class AppState extends ChangeNotifier {
       }
       return (ok: true, detail: 'Connected — ${res['db'] ?? 'ok'}');
     } on ApiException catch (e) {
+      // The emulator alias is a build-time accident, not something the user can
+      // have typed by mistake, so name the cause and the fix instead of asking
+      // them to check a port that is not what is wrong.
+      if (e.isNetwork && AppConfig.usesEmulatorHost) {
+        return (
+          ok: false,
+          detail: 'This build points at ${AppConfig.apiBaseUrl}, which only '
+              'exists inside an Android emulator. Open Settings and set the '
+              'server address to your real server.',
+        );
+      }
       final detail = switch (e.code) {
         'unauthorized' => 'Reachable, but rejected the token.',
         'not_found' =>
