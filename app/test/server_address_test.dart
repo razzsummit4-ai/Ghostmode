@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:securechat/core/config.dart';
 import 'package:securechat/net/discovery.dart';
 
 /// Which address the app offers is the difference between a phone that signs in
@@ -17,6 +18,38 @@ DiscoveredServer _server({
     );
 
 void main() {
+  group('normaliseUrl', () {
+    // The bug that made a hosted server unusable: a bare hostname became
+    // http://, which the server answers with a 301 to https that this client
+    // does not follow, so every probe failed and the app said "cannot reach".
+    test('defaults a bare public hostname to https', () {
+      expect(AppConfig.normaliseUrl('ghostmode.onrender.com'),
+          'https://ghostmode.onrender.com');
+      expect(AppConfig.normaliseUrl('chat.example.com'), 'https://chat.example.com');
+    });
+
+    // A self-hosted server on a home network has no certificate, so these must
+    // keep the http default or the LAN setup that already works would break.
+    test('keeps http for private LAN addresses', () {
+      expect(AppConfig.normaliseUrl('192.168.0.100:4000'), 'http://192.168.0.100:4000');
+      expect(AppConfig.normaliseUrl('10.0.2.2:4000'), 'http://10.0.2.2:4000');
+      expect(AppConfig.normaliseUrl('172.20.10.4:4000'), 'http://172.20.10.4:4000');
+      expect(AppConfig.normaliseUrl('localhost:4000'), 'http://localhost:4000');
+      expect(AppConfig.normaliseUrl('myserver.local'), 'http://myserver.local');
+    });
+
+    test('never overrides a scheme the user typed', () {
+      expect(AppConfig.normaliseUrl('http://192.168.1.5:4000'), 'http://192.168.1.5:4000');
+      expect(AppConfig.normaliseUrl('https://chat.example.com'),
+          'https://chat.example.com');
+    });
+
+    test('trims whitespace and trailing slashes', () {
+      expect(AppConfig.normaliseUrl('  https://x.com/  '), 'https://x.com');
+      expect(AppConfig.normaliseUrl('https://x.com///'), 'https://x.com');
+    });
+  });
+
   group('suggestedUrl', () {
     test('ignores the Android emulator alias, which no phone can resolve', () {
       // The server's PUBLIC_URL default. Advertising it sends every real device
