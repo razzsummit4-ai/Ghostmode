@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import crypto from 'node:crypto';
 import { User } from '../models/User.js';
 import { requireAuth } from '../middleware/auth.js';
 import { asyncRoute, HttpError } from '../middleware/error.js';
@@ -69,7 +70,10 @@ router.post(
     if (body.deviceName) user.deviceName = body.deviceName;
     if (body.deviceId) user.deviceId = body.deviceId;
     // A fresh identity key means a new registration id, per the Signal spec.
-    user.registrationId = Math.floor(Math.random() * 0x3fffffff);
+    // crypto.randomBytes, not Math.random: this id addresses the device in
+    // every X3DH handshake, and a predictable one would let an attacker guess
+    // a future device id. auth.js mints it the same way.
+    user.registrationId = crypto.randomBytes(4).readUInt32BE(0) & 0x3fffffff;
     user.consumedOneTimePreKeys = [];
     await user.save();
 

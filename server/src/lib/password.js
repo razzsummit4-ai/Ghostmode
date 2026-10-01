@@ -52,21 +52,23 @@ export function hashPassword(password) {
 /**
  * Constant-time verification.
  *
- * timingSafeEqual throws on a length mismatch, so lengths are compared first
- * and a dummy comparison is burned in that branch, keeping the failure path
- * about as slow as the success path.
+ * The scrypt output length is fixed at KEY_BYTES and never taken from the
+ * stored value. `hashB64` is read from the database, so using its decoded
+ * length as the KDF output size would let a corrupted or tampered row decide
+ * how much work the server does - a 64 KB "hash" turns a ~100 ms check into a
+ * far heavier allocation-and-fill, repeated on every login attempt.
+ *
+ * timingSafeEqual also throws when the two buffers differ in length, so both
+ * are checked against the known constants first and the comparison is only
+ * reached when they are guaranteed to match.
  */
 export function verifyPassword(password, saltB64, hashB64) {
   if (typeof saltB64 !== 'string' || typeof hashB64 !== 'string') return false;
   const salt = Buffer.from(saltB64, 'base64');
   const expected = Buffer.from(hashB64, 'base64');
-  if (salt.length === 0 || expected.length === 0) return false;
+  if (salt.length !== SALT_BYTES || expected.length !== KEY_BYTES) return false;
 
-  const candidate = crypto.scryptSync(password, salt, expected.length, SCRYPT);
-  if (candidate.length !== expected.length) {
-    crypto.timingSafeEqual(candidate, candidate);
-    return false;
-  }
+  const candidate = crypto.scryptSync(password, salt, KEY_BYTES, SCRYPT);
   return crypto.timingSafeEqual(candidate, expected);
 }
 

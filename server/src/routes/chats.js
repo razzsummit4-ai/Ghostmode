@@ -22,7 +22,12 @@ router.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     const me = String(req.user._id);
-    const limit = Math.min(Number(req.query.limit) || 40, 100);
+    // Clamped to a positive integer: a negative limit is not a smaller page, it is
+    // an invalid argument that `.limit()` would reject outright.
+    const requestedLimit = Number(req.query.limit);
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(Math.floor(requestedLimit), 100)
+      : 40;
 
     // Every group I belong to.
     const groups = await Group.find({ 'members.userId': me }).sort({ updatedAt: -1 }).limit(limit);
@@ -54,9 +59,15 @@ router.get(
     }
 
     // Resolve peer profiles in one query.
+    //
+    // The string comparison has to be `String(m.receiverId) === me`. Written as
+    // `m.receiverId === me`, the ObjectId is compared against a string, is
+    // never equal, and the ternary below silently falls through to
+    // `m.receiverId` - so the sender of a thread you started was reported as
+    // their own peer.
     const peerIds = [
       ...new Set(
-        myDirects.map((m) => String(m.receiverId === me ? m.senderId : m.receiverId)),
+        myDirects.map((m) => (String(m.receiverId) === me ? m.senderId : m.receiverId)),
       ),
     ];
     const peers = await User.find({ _id: { $in: peerIds } })

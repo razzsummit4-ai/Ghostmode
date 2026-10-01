@@ -12,6 +12,10 @@ import '../core/config.dart';
 class RealtimeGateway {
   io.Socket? _socket;
 
+  /// Newest `createdAt` seen on the wire, used as the cursor for the next
+  /// `sync:request`. Null until the first inbound message or batch.
+  String? _lastSyncedAt;
+
   final _messages = StreamController<Map<String, dynamic>>.broadcast();
   final _receipts = StreamController<ReceiptEvent>.broadcast();
   final _typing = StreamController<TypingEvent>.broadcast();
@@ -42,9 +46,16 @@ class RealtimeGateway {
     socket.onConnect((_) {
       if (!_connection.isClosed) _connection.add(true);
       // Ask for anything missed while the device was offline or asleep.
+      //
+      // The cursor must be the last timestamp this device actually processed.
+      // Sending "now" - as this did - asks for messages created after the
+      // moment of connecting, which is always an empty set, so anything that
+      // arrived while the socket was down was never recovered. Zero means
+      // "everything I have not already de-duplicated by clientMessageId",
+      // which is safe because the client reconciles on its own id.
       socket.emitWithAck(
         'sync:request',
-        {'after': DateTime.now().toIso8601String()},
+        {'after': _lastSyncedAt ?? ''},
         ack: (_) {},
       );
     });
@@ -59,6 +70,17 @@ class RealtimeGateway {
 
     socket.on('message:receive', _onMessage);
     socket.on('message:new', _onMessage);
+
+    // The server answers `sync:request` with a batch on this event. Without a
+    // listener the batch is received and discarded, so anything recovered
+    // after a reconnect never reached the message stream.
+    socket.on('sync:batch', (data) {
+      final rows = (data is Map ? data['messages'] : null);
+      if (rows is! List) return;
+      for (final row in rows) {
+        if (row is Map) _onMessage(row);
+      }
+    });
 
     socket.on('message:delivered', (data) {
       if (data is Map) {
@@ -104,6 +126,15 @@ class RealtimeGateway {
     if (data is! Map) return;
     if (!_messages.isClosed) {
       _messages.add(Map<String, dynamic>.from(data));
+    }
+    // Advance the sync cursor from the payload, not from the clock. Anything
+    // the device has seen is something the next `sync:request` must not ask
+    // for again; using a local timestamp instead would drop messages that
+    // arrived while this device's clock disagreed with the server's.
+    final at = data['createdAt'];
+    if (at is String && at.isNotEmpty) {
+      final previous = _lastSyncedAt;
+      if (previous == null || at.compareTo(previous) > 0) _lastSyncedAt = at;
     }
   }
 

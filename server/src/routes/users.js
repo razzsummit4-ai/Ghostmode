@@ -22,11 +22,14 @@ router.get(
     if (q.length < 3) {
       throw new HttpError(400, 'query_too_short', 'Provide at least 3 characters.');
     }
-    // Match on phone digits; allow a spaced/dashed human-entered format.
+    // Anchored and length-capped. A user-supplied pattern that is left
+    // unanchored lets a crafted query such as "(a+)+$" drive the regex engine
+    // into catastrophic backtracking, which stalls the event loop for every
+    // other request in the meantime.
     const digits = q.replace(/[^\d]/g, '');
     const filter = digits.length >= 3
-      ? { phone: { $regex: `${escapeRegex(digits)}` } }
-      : { displayName: { $regex: escapeRegex(q), $options: 'i' } };
+      ? { phone: { $regex: escapeRegex(digits.slice(0, 15)) } }
+      : { displayName: { $regex: `^${escapeRegex(q.slice(0, 64))}`, $options: 'i' } };
 
     const users = await User.find(filter)
       .select('phone displayName publicIdentityKey registrationId avatarColor lastSeenAt')

@@ -66,6 +66,11 @@ router.post(
  */
 router.put(
   '/blob/:key(*)',
+  // No bearer token by design - the URL's random key is the capability, the
+  // same model as an S3 presigned PUT. It does need the media limiter though:
+  // this route writes straight to disk, and leaving it unbounded lets an
+  // unauthenticated caller fill the volume with a single scripted loop.
+  mediaLimiter,
   asyncRoute(async (req, res) => {
     if (storage().name !== 'local') {
       throw new HttpError(404, 'not_found', 'Use a presigned URL with the S3 driver.');

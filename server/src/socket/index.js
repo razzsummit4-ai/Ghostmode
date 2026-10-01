@@ -122,14 +122,23 @@ export function attachSocketGateway(httpServer, app) {
       }
     });
 
+    /** Leave a group room, so typing fan-out stops for a group the user left. */
+    socket.on('group:leave', ({ groupId } = {}) => {
+      if (typeof groupId === 'string' && groupId) socket.leave(`group:${groupId}`);
+    });
+
     /** Redeliver anything missed while the client was offline. */
     socket.on('sync:request', async ({ after } = {}, ack) => {
       try {
         const { Message } = await import('../models/Message.js');
         const { Group } = await import('../models/Group.js');
         const myGroups = await Group.find({ 'members.userId': user._id }).select('_id').lean();
+        // An absent or unparseable cursor means "everything", so a device that
+        // has never synced still receives its backlog.
+        const since = new Date(after || 0);
+        const cutoff = Number.isNaN(since.getTime()) ? new Date(0) : since;
         const messages = await Message.find({
-          createdAt: { $gt: new Date(after || 0) },
+          createdAt: { $gt: cutoff },
           $or: [
             { receiverId: user._id },
             { groupId: { $in: myGroups.map((g) => g._id) } },

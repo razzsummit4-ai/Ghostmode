@@ -159,13 +159,33 @@ router.get(
     const { chatId } = req.params;
     await assertChatAccess(chatId, req.user);
 
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    // A negative or NaN limit must not reach the driver: `.limit(-5)` throws,
+    // which surfaces as a 500 rather than the 400 the client deserves.
+    const requested = Number(req.query.limit);
+    const limit = Number.isFinite(requested) && requested > 0
+      ? Math.min(Math.floor(requested), 200)
+      : 50;
     const query = { chatId };
 
     // Keyset pagination on _id rather than skip/limit, which degrades the
     // deeper you page and can duplicate rows under concurrent writes.
-    if (req.query.before) query._id = { $lt: req.query.before };
-    if (req.query.after) query._id = { $gt: req.query.after };
+    //
+    // The cursors go into a Mongo comparison, so they must be validated here:
+    // an unvalidated value reaches the driver as a CastError, which the error
+    // handler reports as an opaque 500 instead of the 400 the client sent
+    // something wrong.
+    if (req.query.before !== undefined) {
+      if (!isId(req.query.before)) {
+        throw new HttpError(400, 'invalid_cursor', 'Malformed "before" cursor.');
+      }
+      query._id = { $lt: req.query.before };
+    }
+    if (req.query.after !== undefined) {
+      if (!isId(req.query.after)) {
+        throw new HttpError(400, 'invalid_cursor', 'Malformed "after" cursor.');
+      }
+      query._id = query._id ? { ...query._id, $gt: req.query.after } : { $gt: req.query.after };
+    }
 
     const messages = await Message.find(query).sort({ _id: -1 }).limit(limit);
     const nextCursor = messages.length === limit ? String(messages[messages.length - 1]._id) : null;
