@@ -66,6 +66,67 @@ describe('regressions', () => {
     assert.equal(res.status, 400);
   });
 
+  // Bug 8: the root route decided browser-vs-JSON purely on `Accept: text/html`.
+// Several mobile browsers and in-app webviews send `*/*` or omit Accept, so
+// those users received a bare JSON object with no download link and no sign of
+// what to do. A browser User-Agent now counts too, while the Flutter app - which
+// sends `Dart/<v> (dart:io)` and `Accept: application/json` - must still get JSON.
+describe('root content negotiation', () => {
+  const AGENT_ANDROID = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121.0 Mobile';
+  const AGENT_IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15';
+  const AGENT_DART = 'Dart/3.13 (dart:io)';
+
+  test('serves the page to a mobile browser that sends only a wildcard', async () => {
+    const res = await api()
+      .get('/')
+      .set('User-Agent', AGENT_ANDROID)
+      .set('Accept', '*/*');
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'], /text\/html/);
+    assert.match(res.text, /SecureChat/);
+  });
+
+  test('serves the page when Accept is absent entirely', async () => {
+    const res = await api().get('/').set('User-Agent', AGENT_IOS).set('Accept', '');
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'], /text\/html/);
+  });
+
+  test('still serves JSON to the Flutter app', async () => {
+    const res = await api()
+      .get('/')
+      .set('User-Agent', AGENT_DART)
+      .set('Accept', 'application/json');
+    assert.equal(res.status, 200);
+    assert.match(res.headers['content-type'], /application\/json/);
+    assert.equal(res.body.service, 'securechat');
+  });
+
+  test('still serves JSON to a script that asks for it', async () => {
+    const res = await api()
+      .get('/')
+      .set('User-Agent', 'curl/8.4.0')
+      .set('Accept', 'application/json');
+    assert.match(res.headers['content-type'], /application\/json/);
+  });
+
+  test('still serves JSON when a browser explicitly prefers JSON', async () => {
+    // Accept lists both, JSON wins - an explicit request is honoured.
+    const res = await api()
+      .get('/')
+      .set('User-Agent', AGENT_ANDROID)
+      .set('Accept', 'application/json, text/html');
+    assert.match(res.headers['content-type'], /application\/json/);
+  });
+
+  test('the page offers the APK downloads', async () => {
+    const res = await api().get('/').set('User-Agent', AGENT_ANDROID).set('Accept', '*/*');
+    assert.match(res.text, /releases\/download\/v1\.0\.0/);
+    assert.match(res.text, /SecureChat-arm64-v8a\.apk/);
+  });
+});
+
+describe('regressions (media)', () => {
   // Bug 7: the local storage driver built upload URLs from config.PUBLIC_URL.
   // That value defaults to http://localhost:4000 and is not set on Render, so
   // every presigned upload URL pointed at the server's own loopback address and
@@ -107,6 +168,7 @@ describe('regressions', () => {
       });
     }
   });
+});
 });
 
 describe('regressions (network)', () => {

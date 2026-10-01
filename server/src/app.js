@@ -183,7 +183,20 @@ app.get('/', (req, res) => {
 
   // Browser asks for a page; the Flutter app and scripts ask for JSON. Both
   // are answered here so neither audience needs a second URL or a redirect.
-  if (accept.includes('text/html')) {
+  //
+  // The Accept header alone is not a reliable browser test. Several mobile
+  // browsers and in-app webviews send `*/*` or nothing at all, and requiring
+  // `text/html` meant those users were served a bare JSON object with no
+  // download link - the page simply looked broken to them. So a real browser
+  // User-Agent also counts, and JSON is only returned for callers that
+  // explicitly ask for it or clearly are not a browser.
+  const ua = req.headers['user-agent'] || '';
+  const asksForJson = /application\/json/i.test(accept);
+  const looksLikeBrowser =
+    accept.includes('text/html') ||
+    /Mozilla|AppleWebKit|Chrome|Safari|Firefox|Edg\//i.test(ua);
+
+  if (looksLikeBrowser && !asksForJson) {
     res.set('Content-Type', 'text/html; charset=utf-8');
     return res.status(200).send(landingPage(req.headers.host, dbUp, req.protocol));
   }
