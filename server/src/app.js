@@ -47,6 +47,36 @@ export function createApp() {
   app.use(requestLogger);
   app.use(globalLimiter);
 
+  // Service identity at the root.
+  //
+  // Someone who opens this server in a browser used to land on a bare
+  // `{"error":"not_found"}` 404, which reads like a broken deployment rather
+  // than a working API server with no web UI. This answers with the same
+  // `service: 'securechat'` marker as /health, so the app's server picker and a
+  // human looking at the URL can both confirm they reached the right place.
+  app.get('/', (req, res) => {
+    res.json({
+      ok: true,
+      service: 'securechat',
+      name: 'SecureChat E2E Messenger',
+      version: '1.0.0',
+      message:
+        'This is an API server, not a website. Point the SecureChat app at this ' +
+        'address, or see /health for status.',
+      endpoints: {
+        health: '/health',
+        auth: '/api/auth',
+        keys: '/api/keys',
+        chats: '/api/chats',
+        messages: '/api/messages',
+        groups: '/api/groups',
+        users: '/api/users',
+        media: '/api/media',
+      },
+      db: isConnected() ? 'up' : 'down',
+    });
+  });
+
   // Reachability probe, used by the app's server picker and by Settings.
   //
   // `ok` and `service` exist for the client: `ok` is the field it checks, and
