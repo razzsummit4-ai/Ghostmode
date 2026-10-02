@@ -294,6 +294,27 @@ class SessionManager {
     identityChanges.remove(peerId);
   }
 
+  /// Accept a peer's identity key the user has just verified, and rebuild the
+  /// session against it.
+  ///
+  /// Removing the flag alone is not enough, and was the bug behind "marked as
+  /// verified" never working. [acknowledgeIdentityChange] only clears the
+  /// in-memory [identityChanges] set; the stale key stays pinned in the vault,
+  /// so the next handshake compares the new key against the old one, throws
+  /// again, and the message never decrypts - with no way out of the loop.
+  ///
+  /// So this re-pins the key the user approved, then drops the cached session
+  /// and its ratchet state. Dropping the session is deliberate: a session built
+  /// during the mismatch has chain state derived from a key the user has now
+  /// rejected, and keeping it would leave the two sides unable to agree.
+  /// Forcing a fresh X3DH handshake is what actually makes old messages
+  /// readable again.
+  Future<void> acceptIdentityChange(String peerId, Uint8List approved) async {
+    await vault.pinPeerIdentityKey(peerId, approved);
+    identityChanges.remove(peerId);
+    await forget(peerId);
+  }
+
   /// Drop a session and its pinned key, forcing a fresh handshake.
   Future<void> forget(String peerId) async {
     _sessions.remove(peerId)?.dispose();

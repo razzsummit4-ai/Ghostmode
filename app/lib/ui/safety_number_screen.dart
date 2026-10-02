@@ -162,12 +162,53 @@ class _SafetyNumberScreenState extends State<SafetyNumberScreen> {
   }
 
   /// Accept the current key as genuine, clearing any recorded change.
-  void _confirmVerified() {
-    context.read<AppState>().sessions.acknowledgeIdentityChange(widget.peerId);
-    Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Marked as verified.')),
-    );
+  ///
+  /// This has to do three things, not one. Clearing the in-memory flag alone -
+  /// which is all this used to do - left the stale key pinned in the vault, so
+  /// the very next handshake compared against the old key, failed again, and
+  /// the message stayed undeliverable with no way out.
+  ///
+  /// The pinned key is replaced with the one just shown and approved, and the
+  /// cached session is dropped so a fresh X3DH handshake is performed against
+  /// the key the user has now accepted.
+  Future<void> _confirmVerified() async {
+    final state = context.read<AppState>();
+    final messenger = state.messaging;
+
+    try {
+      final res = await state.api.safetyNumber(widget.peerId);
+      final approved = unb64('${res['remoteIdentityKey']}');
+
+      await state.sessions.acceptIdentityChange(widget.peerId, approved);
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Marked as verified. Messages will decrypt from now on.'),
+        ),
+      );
+
+      // Re-fetch the thread so anything that failed while the key was pinned
+      // out is retried now that the session has been rebuilt. The chat id is
+      // asked of the server rather than rebuilt locally, because the server
+      // owns the "two ids sorted and joined" rule that defines a direct thread.
+      try {
+        final chat = await state.api.chatWith(widget.peerId);
+        final chatId = '${chat['chatId']}';
+        if (chatId.isNotEmpty && chatId != 'null') {
+          await messenger.loadThread(chatId);
+        }
+      } catch (_) {
+        // The thread reload is best-effort: the key has already been accepted,
+        // so the next send or the next real-time message succeeds regardless.
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not verify: $e')),
+      );
+    }
   }
 
   static List<List<String>> _chunk(List<String> items, int size) {

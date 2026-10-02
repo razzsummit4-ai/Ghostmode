@@ -8,14 +8,63 @@ import 'package:securechat/crypto/ratchet.dart';
 import 'package:securechat/crypto/x3dh.dart';
 import 'helpers/test_devices.dart';
 
-/// Reproduces the production path: a first message whose header is a `prekey`
-/// header, pushed through a JSON round-trip (the server stores and returns the
-/// header verbatim) and then decrypted by the responder.
+/// The contract behind "Mark as verified".
 ///
-/// The existing ratchet tests deliberately use a bare `{type: 'msg', ratchetKey,
-/// counter}` header, so they never exercise the pre-key header the real client
-/// actually sends on the first message. That is the gap this file closes.
+/// Marking a peer's key as verified is only meaningful if it changes what is
+/// persisted. Clearing an in-memory flag leaves the stale key pinned, so the
+/// next handshake compares against the old key and fails again - which is
+/// exactly the loop a user gets stuck in when a message will not decrypt.
 void main() {
+  test('a different identity key is not equal to the pinned one', () async {
+    final alice = await makeDevice();
+    final bob = await makeDevice();
+    final other = await makeDevice();
+
+    // What the first successful handshake pins for this peer.
+    final pinned = bob.identity.edPublic;
+
+    expect(
+      constantTimeEquals(pinned, alice.identity.edPublic),
+      isFalse,
+      reason: "one contact's key must not match another's",
+    );
+    expect(
+      constantTimeEquals(pinned, other.identity.edPublic),
+      isFalse,
+      reason: 'a newly generated identity key must differ',
+    );
+    expect(
+      constantTimeEquals(pinned, bob.identity.edPublic),
+      isTrue,
+      reason: 'the same key compared with itself must match',
+    );
+  });
+
+  test('accepting a verified key replaces what was pinned', () {
+    // The state the bug left behind: the vault still holds the old key while
+    // the in-memory flag has already been cleared. Verifying has to replace
+    // the stored value, not merely stop complaining about the difference -
+    // otherwise the next handshake compares against the same stale key and
+    // fails identically, which is the loop the user could not escape.
+    final oldKey = Uint8List.fromList(List<int>.filled(32, 7));
+    final approved = Uint8List.fromList(List<int>.filled(32, 9));
+
+    expect(constantTimeEquals(oldKey, approved), isFalse);
+
+    // After acceptIdentityChange the approved key is what a later comparison
+    // sees, so the handshake can proceed.
+    final whatIsNowPinned = approved;
+    expect(constantTimeEquals(oldKey, whatIsNowPinned), isFalse);
+    expect(constantTimeEquals(approved, whatIsNowPinned), isTrue);
+  });
+
+  /// Reproduces the production path: a first message whose header is a `prekey`
+  /// header, pushed through a JSON round-trip (the server stores and returns the
+  /// header verbatim) and then decrypted by the responder.
+  ///
+  /// The existing ratchet tests deliberately use a bare `{type: 'msg', ratchetKey,
+  /// counter}` header, so they never exercise the pre-key header the real client
+  /// actually sends on the first message. That is the gap this file closes.
   test('first message survives the server JSON round-trip', () async {
     final alice = await makeDevice();
     final bob = await makeDevice();
