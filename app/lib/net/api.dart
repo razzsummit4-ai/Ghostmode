@@ -242,8 +242,17 @@ class SecureApi {
   }
 
   /// Create the code, or replace the existing one when [rotate] is set.
-  Future<String> createVerificationCode({bool rotate = false}) async {
-    final body = await _post('/api/verification/code', {'rotate': rotate});
+  ///
+  /// Pass [code] to choose the code yourself instead of taking the generated
+  /// one. Throws ApiException('weak_verification_code') if it is unusable.
+  Future<String> createVerificationCode({
+    bool rotate = false,
+    String? code,
+  }) async {
+    final body = await _post('/api/verification/code', {
+      'rotate': rotate,
+      if (code != null) 'code': code,
+    });
     return '${body['code']}';
   }
 
@@ -253,10 +262,18 @@ class SecureApi {
     return body['verified'] == true;
   }
 
-  /// Submit [userId]'s code. Throws ApiException('verification_failed') if it
-  /// is wrong.
-  Future<void> verifyWith(String userId, String code) async {
-    await _post('/api/verification/$userId', {'code': code});
+  /// Submit [userId]'s code, returning their current public identity key.
+  ///
+  /// The key comes back with the grant on purpose. Accepting the code is the
+  /// moment the user vouches for who they are talking to, so the device must
+  /// also replace the key it pinned earlier - otherwise the very next send
+  /// still refuses against the stale one, and the message silently fails.
+  ///
+  /// Throws ApiException('verification_failed') if the code is wrong.
+  Future<String?> verifyWith(String userId, String code) async {
+    final body = await _post('/api/verification/$userId', {'code': code});
+    final key = body['identityKey'];
+    return key == null ? null : '$key';
   }
 
   /// Withdraw this account's access to [userId].

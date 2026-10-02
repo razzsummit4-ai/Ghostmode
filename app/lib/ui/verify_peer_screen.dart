@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../crypto/keys.dart';
 import '../net/api.dart';
 import '../state/app_state.dart';
 import 'theme.dart';
@@ -64,17 +65,29 @@ class _VerifyPeerScreenState extends State<VerifyPeerScreen> {
       _error = null;
     });
 
-    try {
-      await api.verifyWith(widget.peerId, code);
+    final state = context.read<AppState>();
+      try {
+        // The grant and the identity key come back together. Accepting the code is
+        // the user vouching for this person, so the device must drop the key it
+        // pinned before as well - otherwise the next send is refused by
+        // _verifyPinnedIdentity and the message never leaves the device.
+        final identityKey = await api.verifyWith(widget.peerId, code);
+        if (identityKey != null && identityKey.isNotEmpty) {
+          await state.sessions.acceptIdentityChange(widget.peerId, unb64(identityKey));
+        }
+
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.code == 'verification_failed'
-            ? 'That code is not correct. Ask ${widget.peerName} for the code '
-                'in their profile, then enter it exactly as they gave it.'
-            : (e.message ?? e.code);
+        _error = switch (e.code) {
+          'verification_failed' =>
+            'That code is not correct. Ask ${widget.peerName} for the code '
+                'in their profile, then enter it exactly as they gave it.',
+          'weak_verification_code' => e.message ?? e.code,
+          _ => e.message ?? e.code,
+        };
         _busy = false;
       });
     } catch (e) {

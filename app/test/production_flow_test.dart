@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:securechat/crypto/keys.dart';
 import 'package:securechat/crypto/ratchet.dart';
 import 'package:securechat/crypto/x3dh.dart';
+import 'package:securechat/ui/my_code_screen.dart';
 import 'helpers/test_devices.dart';
 
 /// The contract behind "Mark as verified".
@@ -315,6 +316,31 @@ void main() {
         wireHeader,
       );
       expect(utf8.decode(opened.plaintext), 'first real message');
+    });
+  });
+
+  group('owner-chosen verification code', () {
+    test('styling is normalised, the characters are not changed', () {
+      // A code is read aloud and typed by hand, so lower case, spaces and
+      // dashes are the owner's styling, not part of the code. All three
+      // spellings below are the same code.
+      expect(canonicalVerificationCode('sunshade 2244'), 'SUNS-HADE-2244');
+      expect(canonicalVerificationCode('SUNSHADE-2244'), 'SUNS-HADE-2244');
+      expect(canonicalVerificationCode('sunshade2244'), 'SUNS-HADE-2244');
+    });
+
+    test('a character that cannot be used is reported, not dropped', () {
+      // Silently discarding the I would hand back an 11 character code that the
+      // user never typed, with no explanation.
+      expect(
+        () => canonicalVerificationCode('sunshine-2244'),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
+
+    test('the wrong length is refused', () {
+      expect(() => canonicalVerificationCode('sunshade'), throwsArgumentError);
+      expect(() => canonicalVerificationCode(''), throwsArgumentError);
     });
   });
 }
