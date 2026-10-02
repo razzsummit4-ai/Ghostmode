@@ -13,6 +13,11 @@ import '../store/key_vault.dart';
 /// This is the app's man-in-the-middle alarm. It is deliberately fatal for the
 /// send path: the user must be shown the new safety number and re-verify,
 /// because silently accepting a new identity would defeat pinning entirely.
+/// A peer's identity key changed, so the old pin no longer applies.
+///
+/// Recorded in [SessionManager.identityChanges] rather than thrown: the session
+/// is rebuilt automatically, and the UI reads this set to explain why. Nothing
+/// throws it any more.
 class IdentityChangedException implements Exception {
   IdentityChangedException(this.peerId);
 

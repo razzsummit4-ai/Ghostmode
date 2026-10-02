@@ -413,10 +413,6 @@ class MessagingService {
 
   /// Human wording for a decryption failure, leaking no key material.
   static String describeFailure(Object e) {
-    if (e is IdentityChangedException) {
-      return '⚠️ This contact reinstalled the app, so the conversation had to '
-          'be re-established.';
-    }
     if (e is ProtocolException) {
       return switch (e.code) {
         // Say WHICH side of the tag failed. A bare "integrity check" sends the

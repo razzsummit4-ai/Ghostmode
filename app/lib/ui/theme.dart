@@ -161,7 +161,7 @@ class EncryptionBanner extends StatelessWidget {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  subtitle ?? 'End-to-end encrypted. Tap to verify.',
+                  subtitle ?? 'End-to-end encrypted. Tap for info.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 12.5,
