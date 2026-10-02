@@ -14,6 +14,12 @@ class TestDevice {
 
   late Uint8List _signedPreKeySignature;
 
+  /// The identity key's signature over [signedPreKey], as published.
+  ///
+  /// Exposed so a test can build a bundle with an arbitrary pre-key selection,
+  /// including none at all.
+  Uint8List get signedPreKeySignature => _signedPreKeySignature;
+
   /// The public bundle exactly as it would be uploaded to the server.
   PreKeyBundle bundle(String userId) => PreKeyBundle(
     userId: userId,

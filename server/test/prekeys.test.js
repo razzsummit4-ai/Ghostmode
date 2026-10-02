@@ -61,6 +61,33 @@ describe('one-time pre-key pool integrity', () => {
 
     assert.equal(res.body.preKeyCount, 7);
   });
+test('a peer can be told its pool is empty, and the report is honest', async () => {
+    // The client cannot refill someone else's device - the private halves never
+    // leave it - so this is a notification. It must not claim delivery when the
+    // peer is offline, or the sender would assume the pool is refilling when it
+    // is not and every later handshake would keep falling back.
+    const alice = await registerUser(api(), '+10000000710', 80);
+    const bob = await registerUser(api(), '+10000000711', 81);
+
+    const res = await api()
+      .post('/api/keys/prekeys/request')
+      .set(auth(alice.token))
+      .send({ userId: bob.user.id })
+      .expect(200);
+
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.delivered, false, 'no socket is connected in a test');
+    assert.equal(res.body.remaining, 5);
+  });
+
+  test('asking about your own device is refused', async () => {
+    const alice = await registerUser(api(), '+10000000712', 82);
+    await api()
+      .post('/api/keys/prekeys/request')
+      .set(auth(alice.token))
+      .send({ userId: alice.user.id })
+      .expect(400);
+  });
 
   test('a consumed pre-key id is not handed out again', async () => {
     const alice = await registerUser(api(), '+10000000703', 73);

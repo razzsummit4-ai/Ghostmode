@@ -21,12 +21,19 @@ class RealtimeGateway {
   final _typing = StreamController<TypingEvent>.broadcast();
   final _connection = StreamController<bool>.broadcast();
 
+  /// Fires when a peer tried to start a session and found this device's
+  /// one-time pre-key pool empty. The listener refills it.
+  final _preKeysLow = StreamController<void>.broadcast();
+
   /// Raw incoming envelopes. Consumers decrypt these themselves.
   Stream<Map<String, dynamic>> get messages => _messages.stream;
 
   Stream<ReceiptEvent> get receipts => _receipts.stream;
   Stream<TypingEvent> get typing => _typing.stream;
   Stream<bool> get connection => _connection.stream;
+
+  /// See [_preKeysLow].
+  Stream<void> get preKeysLow => _preKeysLow.stream;
 
   bool get connected => _socket?.connected ?? false;
 
@@ -80,6 +87,13 @@ class RealtimeGateway {
       for (final row in rows) {
         if (row is Map) _onMessage(row);
       }
+    });
+
+    // A peer could not start a session because this device's pre-key pool was
+    // empty. Refilling it is the only thing that makes the next handshake
+    // normal, so this must not be dropped.
+    socket.on('prekeys:low', (_) {
+      if (!_preKeysLow.isClosed) _preKeysLow.add(null);
     });
 
     socket.on('message:delivered', (data) {

@@ -62,6 +62,9 @@ class AppState extends ChangeNotifier {
   StreamSubscription<ReceiptEvent>? _receiptSub;
   StreamSubscription<TypingEvent>? _typingSub;
 
+  /// Subscription to the socket's "your pre-keys are empty" notification.
+  StreamSubscription<void>? _preKeysSub;
+
   /// Whether the live socket is currently up.
   bool realtimeConnected = false;
 
@@ -336,6 +339,12 @@ class AppState extends ChangeNotifier {
     _receiptSub = realtime.receipts.listen((r) {
       chats.applyReceipt(r.messageIds, r.status);
     });
+
+    // A peer hit an empty pre-key pool on our device. Refill it now so their
+    // next message gets a proper handshake instead of the DH4-less fallback.
+    _preKeysSub = realtime.preKeysLow.listen((_) {
+      unawaited(refreshPreKeys());
+    });
     _typingSub = realtime.typing.listen((t) {
       final target = t.userId;
       if (target.isEmpty || target == userId) return;
@@ -363,6 +372,8 @@ class AppState extends ChangeNotifier {
     _receiptSub = null;
     _typingSub?.cancel();
     _typingSub = null;
+    _preKeysSub?.cancel();
+    _preKeysSub = null;
     realtime.disconnect();
     realtimeConnected = false;
   }

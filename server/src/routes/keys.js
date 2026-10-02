@@ -145,6 +145,56 @@ router.post(
 
 
 /**
+ * POST /api/keys/prekeys/request
+ * Body: { userId }
+ *
+ * Tell a peer their one-time pre-key pool is empty, so their device can mint
+ * replacements.
+ *
+ * The pool is per device and the private halves never leave it, so only the
+ * owner's own device can refill it - which is why this is a notification rather
+ * than something the server does on their behalf. Carries no content and no key
+ * material: it is a hint, and the sender does not wait for it.
+ */
+router.post(
+  '/prekeys/request',
+  requireAuth,
+  zeroKnowledgeGuard({ allowFields: ['userId'] }),
+  asyncRoute(async (req, res) => {
+    const { userId } = z
+      .object({ userId: z.string().regex(/^[a-f\d]{24}$/i) })
+      .parse(req.body ?? {});
+
+    if (String(req.user._id) === String(userId)) {
+      throw new HttpError(400, 'cannot_request_own_prekeys', 'That is your own device.');
+    }
+
+    const target = await User.findById(userId).select('_id oneTimePreKeys');
+    if (!target) throw new HttpError(404, 'user_not_found', 'No such user.');
+
+    // Deliver only to a device that is actually connected, and say so when it is
+    // not, so this is not mistaken for a guaranteed top-up.
+    const io = req.app.get('io');
+    const room = `user:${target._id}`;
+    const sockets = io?.sockets?.adapter?.rooms?.get(room);
+    const online = Boolean(sockets && sockets.size > 0);
+    if (online) {
+      io.to(room).emit('prekeys:low', { by: String(req.user._id) });
+    }
+
+    logger.info('keys.prekey_topup_requested', {
+      by: String(req.user._id),
+      for: String(target._id),
+      remaining: target.oneTimePreKeys.length,
+      delivered: online,
+    });
+
+    res.json({ ok: true, remaining: target.oneTimePreKeys.length, delivered: online });
+  }),
+);
+
+
+/**
  * GET /api/keys/:userId[?consume=true]
  *
  * Without `consume`, a directory lookup: identity key + signed pre-key.

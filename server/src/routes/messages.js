@@ -93,7 +93,7 @@ router.post(
       chatId = `group:${group._id}`;
       if (!expiresInSeconds) expiresInSeconds = group.disappearingMessagesSeconds || 0;
     } else {
-      const target = await User.findById(body.receiverId).select('_id verifiedPeers');
+      const target = await User.findById(body.receiverId).select('_id');
       if (!target) throw new HttpError(404, 'receiver_not_found', 'No such recipient.');
       if (String(target._id) === String(sender._id)) {
         throw new HttpError(400, 'cannot_message_self', 'You cannot message yourself.');

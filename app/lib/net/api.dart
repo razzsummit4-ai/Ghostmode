@@ -204,6 +204,20 @@ class SecureApi {
   Future<Map<String, dynamic>> fetchKeys(String userId, {bool consume = false}) =>
       _get('/api/keys/$userId', consume ? {'consume': 'true'} : null);
 
+  /// Nudge a peer whose one-time pre-key pool has run dry.
+  ///
+  /// Best-effort and fire-and-forget: the caller sends the message either way,
+  /// because X3DH has a defined variant without the DH4 term. Only the peer's
+  /// own device can mint new pre-keys, so this has to travel over the socket -
+  /// the REST layer cannot act on someone else's behalf.
+  Future<void> requestPreKeyTopUp(String peerId) async {
+    try {
+      await _post('/api/keys/prekeys/request', { 'userId': peerId });
+    } catch (_) {
+      // Nothing depends on this succeeding.
+    }
+  }
+
   // --- Users & chats ---------------------------------------------------------
 
   Future<List<Map<String, dynamic>>> searchUsers(String query) async {

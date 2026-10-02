@@ -109,9 +109,20 @@ class MessagingService {
       if (e.status == 401) {
         state.lastError = 'Session expired. Please sign in again.';
         await state.handleUnauthorized();
+      } else {
+        // Surface every other reason too. A silent failure here is what made
+        // "message not sent" impossible to diagnose: the bubble just showed a
+        // red tick and nothing said why.
+        state.lastError = 'Not sent: ${e.message ?? e.code}';
       }
-    } catch (_) {
+    } on ProtocolException catch (e) {
+      // Encryption failed before anything was sent, so this is a local problem:
+      // a missing or forged key, or a session that could not be established.
       row.status = 'failed';
+      state.lastError = 'Not sent: ${e.detail ?? e.code}';
+    } catch (e) {
+      row.status = 'failed';
+      state.lastError = 'Not sent: $e';
     }
     state.chats.upsert(row);
     return row;

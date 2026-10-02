@@ -37,8 +37,14 @@ class PreKeyBundle {
   final int signedPreKeyId;
   final Uint8List signedPreKey;
   final Uint8List signedPreKeySignature;
+
+  /// Null when the peer's one-time pre-key pool is empty. The handshake then
+  /// omits the DH4 term, which both sides treat as zeros.
+  final Uint8List? oneTimePreKey;
+
+  /// 0 when there is no [oneTimePreKey]. The responder reads that as "the
+  /// sender skipped DH4" rather than "pre-key id zero".
   final int oneTimePreKeyId;
-  final Uint8List oneTimePreKey;
 
   Map<String, dynamic> toJson() => {
     'userId': userId,
@@ -48,7 +54,7 @@ class PreKeyBundle {
     'signedPreKey': b64(signedPreKey),
     'signedPreKeySignature': b64(signedPreKeySignature),
     'oneTimePreKeyId': oneTimePreKeyId,
-    'oneTimePreKey': b64(oneTimePreKey),
+    'oneTimePreKey': oneTimePreKey == null ? null : b64(oneTimePreKey!),
   };
 
   static PreKeyBundle fromJson(Map<String, dynamic> json) => PreKeyBundle(
@@ -59,7 +65,9 @@ class PreKeyBundle {
     signedPreKey: unb64(json['signedPreKey'] as String),
     signedPreKeySignature: unb64(json['signedPreKeySignature'] as String),
     oneTimePreKeyId: (json['oneTimePreKeyId'] as num).toInt(),
-    oneTimePreKey: unb64(json['oneTimePreKey'] as String),
+    oneTimePreKey: json['oneTimePreKey'] == null
+        ? null
+        : unb64(json['oneTimePreKey'] as String),
   );
 }
 
@@ -127,7 +135,13 @@ class X3dh {
     final dh1 = await _dh(ourIdentity.dhKeyPair, theirBundle.signedPreKey);
     final dh2 = await _dh(ephemeral, theirIkX);
     final dh3 = await _dh(ephemeral, theirBundle.signedPreKey);
-    final dh4 = await _dh(ephemeral, theirBundle.oneTimePreKey);
+    // No one-time pre-key means the sender skipped DH4. Zeros keep the
+    // concatenation length fixed, matching what the responder does when it
+    // finds no pre-key for the advertised id. Without this the initiator threw
+    // and could not start a conversation with a device whose pool had run out.
+    final dh4 = theirBundle.oneTimePreKey == null
+        ? Uint8List(32)
+        : await _dh(ephemeral, theirBundle.oneTimePreKey!);
 
     // Concatenate in the order the spec mandates, then bind to both identity
     // keys so neither end can be substituted by a man in the middle.

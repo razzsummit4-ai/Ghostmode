@@ -40,6 +40,45 @@ void main() {
     );
   });
 
+  test('a handshake still completes when the peer has no one-time pre-key',
+      () async {
+    // The pool is 100 keys and burns one per new conversation. Once it empties,
+    // the server answers 409 no_prekeys_available. That used to make every send
+    // fail, because _parseBundle cast a null oneTimePreKey to a non-nullable Map.
+    //
+    // X3DH defines the variant without DH4, and the responder already
+    // substituted zeros, so both sides must agree or every message in the
+    // session fails its GCM tag.
+    final alice = await makeDevice();
+    final bob = await makeDevice();
+
+    final result = await X3dh.initiate(
+      ourIdentity: alice.identity,
+      theirBundle: PreKeyBundle(
+        userId: 'bob',
+        registrationId: bob.registrationId,
+        identityKey: bob.identity.edPublic,
+        signedPreKeyId: 1,
+        signedPreKey: bob.signedPreKey.publicKey,
+        signedPreKeySignature: bob.signedPreKeySignature,
+        // Pool empty.
+        oneTimePreKeyId: 0,
+        oneTimePreKey: null,
+      ),
+    );
+    expect(result.sharedSecret, isNotEmpty, reason: 'must still derive a secret');
+
+    final responded = await X3dh.respond(
+      ourIdentity: bob.identity,
+      ourSignedPreKeyPair: bob.signedPreKey,
+      ourOneTimePreKeyPair: null,
+      theirIdentityKey: alice.identity.edPublic,
+      theirEphemeralKey: result.ephemeralPublicKey,
+    );
+    expect(responded, result.sharedSecret,
+        reason: 'both sides must agree when DH4 is skipped');
+  });
+
   test('a changed peer key no longer dead-ends the conversation', () {
     // A reinstall regenerates the peer's identity key. The pinned key can never
     // match again, so throwing here - with no way for the user to clear it -

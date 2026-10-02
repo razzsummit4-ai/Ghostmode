@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../crypto/keys.dart';
@@ -7,12 +8,6 @@ import '../crypto/x3dh.dart';
 import '../net/api.dart';
 import '../store/key_vault.dart';
 
-/// Thrown when a peer presents a different identity key than the one pinned
-/// for this conversation.
-///
-/// This is the app's man-in-the-middle alarm. It is deliberately fatal for the
-/// send path: the user must be shown the new safety number and re-verify,
-/// because silently accepting a new identity would defeat pinning entirely.
 /// A peer's identity key changed, so the old pin no longer applies.
 ///
 /// Recorded in [SessionManager.identityChanges] rather than thrown: the session
@@ -93,7 +88,24 @@ class SessionManager {
   Future<Handshake> initiate(String peerId) async {
     // consume=true burns exactly one one-time pre-key atomically, so two
     // concurrent handshakes can never be handed the same key.
-    final bundle = await api.fetchKeys(peerId, consume: true);
+    Map<String, dynamic> bundle;
+    try {
+      bundle = await api.fetchKeys(peerId, consume: true);
+    } on ApiException catch (e) {
+      // An exhausted pool is 409 no_prekeys_available. X3DH is defined without
+      // the DH4 term, so the handshake still completes and still authenticates
+      // the peer through the signed pre-key; the only thing lost is forward
+      // secrecy against a later compromise of this device's one-time keys.
+      //
+      // Previously this propagated and every send failed, which is what made
+      // messages stop after a device had been contacted a hundred times.
+      if (e.code != 'no_prekeys_available') rethrow;
+      // Ask the peer to refill, then proceed without DH4. AppState tops its own
+      // pool up separately; this is the other side of the conversation.
+      unawaited(api.requestPreKeyTopUp(peerId));
+      bundle = await api.fetchKeys(peerId, consume: false);
+    }
+
     final remote = _parseBundle(peerId, bundle);
 
     // Refuse to continue if the peer's identity key is not the one we pinned.
@@ -323,9 +335,15 @@ class SessionManager {
   }
 
   /// Decode the server's key bundle into the X3DH layer's type.
+  ///
+  /// `oneTimePreKey` is optional. It is absent both when the pool is empty and
+  /// on a directory lookup that does not consume, and X3DH has a defined
+  /// variant without the DH4 term. Casting it to a non-nullable Map threw a
+  /// TypeError on a null value, which surfaced as an unexplained failed send.
   PreKeyBundle _parseBundle(String peerId, Map<String, dynamic> json) {
     final spk = json['signedPreKey'] as Map<String, dynamic>;
-    final opk = json['oneTimePreKey'] as Map<String, dynamic>;
+    final rawOpk = json['oneTimePreKey'];
+    final opk = rawOpk is Map<String, dynamic> ? rawOpk : null;
     return PreKeyBundle(
       userId: peerId,
       registrationId: (json['registrationId'] as num).toInt(),
@@ -333,8 +351,8 @@ class SessionManager {
       signedPreKeyId: (spk['keyId'] as num).toInt(),
       signedPreKey: unb64('${spk['publicKey']}'),
       signedPreKeySignature: unb64('${spk['signature']}'),
-      oneTimePreKeyId: (opk['keyId'] as num).toInt(),
-      oneTimePreKey: unb64('${opk['publicKey']}'),
+      oneTimePreKeyId: opk == null ? 0 : (opk['keyId'] as num).toInt(),
+      oneTimePreKey: opk == null ? null : unb64('${opk['publicKey']}'),
     );
   }
 
