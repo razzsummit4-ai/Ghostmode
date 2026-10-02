@@ -11,7 +11,7 @@
  * Bump RELEASE_TAG when cutting a new build, or the server keeps serving the
  * old binaries.
  */
-export const RELEASE_TAG = 'v1.1.0';
+export const RELEASE_TAG = 'v1.2.0';
 
 /** Lowest Android this build runs on. Below this the installer refuses it. */
 export const MIN_ANDROID = '7.0 (API 24)';
