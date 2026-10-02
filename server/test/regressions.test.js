@@ -195,6 +195,87 @@ describe('verification gate', () => {
     assert.equal(allowed.body.messages.length, 1);
   });
 
+  test('a chosen code is accepted and stored canonically', async () => {
+    const alice = await registerUser(api(), '+10000007020', 90);
+    const res = await api()
+      .post('/api/verification/code')
+      .set(auth(alice.token))
+      .send({ code: 'sunshade-2244' })
+      .expect(200);
+    // Stored canonically: upper-cased, non-alphanumerics dropped, and grouped
+    // in fours. 12 characters become SUNS-HADE-2244.
+    assert.equal(res.body.code, 'SUNS-HADE-2244');
+
+    // And it must be usable as a gate by the other side.
+    const bob = await registerUser(api(), '+10000007021', 91);
+    const codeB = await ensureCode(api(), bob);
+    await api()
+      .post(`/api/verification/${bob.user.id}`)
+      .set(auth(alice.token))
+      .send({ code: codeB })
+      .expect(200);
+
+    // Alice's own chosen code is what a peer must present to reach her.
+    const carol = await registerUser(api(), '+10000007025', 95);
+    await api()
+      .post(`/api/verification/${alice.user.id}`)
+      .set(auth(carol.token))
+      .send({ code: 'sunshade 2244' })
+      .expect(200);
+  });
+
+  test('a code with a character that cannot be used is named, not truncated', async () => {
+    // "SUNSHINE" contains an I. Dropping it silently would hand back a
+    // shorter code than the user typed with no explanation.
+    const alice = await registerUser(api(), '+10000007026', 96);
+    const res = await api()
+      .post('/api/verification/code')
+      .set(auth(alice.token))
+      .send({ code: 'sunshine-2244' })
+      .expect(400);
+    assert.equal(res.body.code, 'weak_verification_code');
+    assert.match(res.body.message, /I/);
+  });
+
+  test('a chosen code is still held to a real minimum', async () => {
+    const alice = await registerUser(api(), '+10000007022', 92);
+    for (const bad of ['AAAAAAAA', 'ABCD', 'ABCDEFGH', '12', 'OOOO-IIII-JJJJ']) {
+      const res = await api()
+        .post('/api/verification/code')
+        .set(auth(alice.token))
+        .send({ code: bad });
+      assert.equal(
+        res.status,
+        400,
+        `"${bad}" must be refused, got ${res.status}`,
+      );
+    }
+  });
+
+  test('verifying returns the peer identity key so a stale pin can be replaced', async () => {
+    // Without this the next send still refuses against the pinned key from
+    // before the reinstall, which is why messages did not go out after a
+    // successful verification.
+    const alice = await registerUser(api(), '+10000007023', 93);
+    const bob = await registerUser(api(), '+10000007024', 94);
+
+    const bundle = await api()
+      .post('/api/keys')
+      .set(auth(bob.token))
+      .send(keyBundle(94))
+      .expect(201);
+
+    const codeB = await ensureCode(api(), bob);
+    const res = await api()
+      .post(`/api/verification/${bob.user.id}`)
+      .set(auth(alice.token))
+      .send({ code: codeB })
+      .expect(200);
+
+    assert.equal(res.body.verified, true);
+    assert.ok(res.body.identityKey, 'the peer identity key must be returned');
+  });
+
   test('granting one direction does not grant the other', async () => {
     const alice = await registerUser(api(), '+10000007011', 81);
     const bob = await registerUser(api(), '+10000007012', 82);

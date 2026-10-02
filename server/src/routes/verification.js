@@ -53,6 +53,62 @@ function generateCode() {
   return formatCode(out.join(''));
 }
 
+/**
+ * Fold whatever the owner typed into the canonical stored form.
+ *
+ * Case, spacing and dashes are a person's styling rather than part of the code,
+ * so `sunshine2244`, `SUNSHINE-2244` and `sun shine 2244` are one code.
+ *
+ * Characters outside the alphabet are REJECTED rather than dropped. Silently
+ * discarding one would shorten the code without telling anyone, so a user who
+ * typed a word containing an I or an O would get a shorter code than they
+ * expected and be left guessing why it was refused.
+ */
+function canonicalise(input) {
+  const raw = String(input ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  const bad = [...raw].filter((c) => !ALPHABET.includes(c));
+  if (bad.length > 0) {
+    const unique = [...new Set(bad)].join(' ');
+    throw new HttpError(
+      400,
+      'weak_verification_code',
+      `Your code contains ${unique}, which cannot be used. `
+      + 'The letters O and I, and the digits 0 and 1, are left out because they '
+      + 'are too easily confused when a code is read aloud.',
+    );
+  }
+
+  if (raw.length !== CODE_GROUPS * CODE_GROUP_LEN) {
+    throw new HttpError(
+      400,
+      'weak_verification_code',
+      `Use exactly ${CODE_GROUPS * CODE_GROUP_LEN} characters from A-Z and 2-9.`,
+    );
+  }
+  return formatCode(raw);
+}
+
+/**
+ * Refuse a chosen code that anyone could guess.
+ *
+ * A user-picked code is only useful if it is also a real gate. "AAAAAAAA",
+ * "12345678" and "ABCDEFGH" are the first things anyone would try, and a
+ * person who picks one has not really protected anything.
+ */
+function weakness(code) {
+  const flat = normaliseCode(code);
+  if (new Set(flat).size < 4) {
+    return 'That code repeats too few characters. Use at least four different ones.';
+  }
+  const ascending = [...flat].every((c, i, a) => i === 0 || a[i - 1] < c);
+  const descending = [...flat].every((c, i, a) => i === 0 || a[i - 1] > c);
+  if (ascending || descending) {
+    return 'That code runs in order. Avoid sequences like ABCD or WXYZ.';
+  }
+  return null;
+}
+
 /** Compare in constant time so a wrong code leaks nothing by timing. */
 function codesMatch(a, b) {
   const x = Buffer.from(String(a));
@@ -79,24 +135,45 @@ router.get(
  * POST /api/verification/code
  *
  * Create the code, or replace it with `rotate: true`.
+ *
+ * `code` lets the owner choose their own rather than being handed a random
+ * one. A code gets read aloud and typed by hand, so a memorable one beats a
+ * generated one - but the floor is still enforced, because a code anyone can
+ * guess is no gate at all.
  */
 router.post(
   '/code',
   requireAuth,
   asyncRoute(async (req, res) => {
-    const body = z.object({ rotate: z.boolean().optional().default(false) }).parse(req.body ?? {});
+    const body = z
+      .object({
+        rotate: z.boolean().optional().default(false),
+        code: z.string().min(1).max(32).optional(),
+      })
+      .parse(req.body ?? {});
 
     const user = await User.findById(req.user._id).select('+verificationCode');
-    if (user.verificationCode && !body.rotate) {
+    if (user.verificationCode && !body.rotate && !body.code) {
       return res.json({ code: user.verificationCode, created: false });
     }
 
-    user.verificationCode = generateCode();
+    if (body.code !== undefined) {
+      const canonical = canonicalise(body.code);
+      const problem = weakness(canonical);
+      if (problem) {
+        throw new HttpError(400, 'weak_verification_code', problem);
+      }
+      user.verificationCode = canonical;
+    } else {
+      user.verificationCode = generateCode();
+    }
+
     await user.save();
 
     logger.info('verification.code_set', {
       userId: String(user._id),
       rotated: Boolean(body.rotate),
+      chosen: body.code !== undefined,
     });
     // The code itself is never logged.
     res.json({ code: user.verificationCode, created: true });
@@ -132,6 +209,13 @@ router.get(
  * match, and a wrong code is reported identically whether the account exists,
  * has no code, or the code is simply wrong - otherwise this endpoint would
  * confirm which phone numbers have set one up.
+ *
+ * The response carries the peer's current public identity key. That is not a
+ * leak - it is already served by /api/keys/:userId - but it matters here: the
+ * client needs it to accept the key at the same moment the code is accepted.
+ * A device that reinstalls generates a new identity, and without this the next
+ * send would still refuse against the stale pinned key even though the user had
+ * just verified the person.
  */
 router.post(
   '/:userId',
@@ -166,7 +250,11 @@ router.post(
     }
 
     logger.info('verification.granted', { userId: String(me._id), peerId: userId });
-    res.json({ userId, verified: true });
+    res.json({
+      userId,
+      verified: true,
+      identityKey: peer.publicIdentityKey ?? null,
+    });
   }),
 );
 
