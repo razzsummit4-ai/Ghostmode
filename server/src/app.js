@@ -11,6 +11,7 @@ import messageRoutes from './routes/messages.js';
 import groupRoutes from './routes/groups.js';
 import chatRoutes from './routes/chats.js';
 import userRoutes from './routes/users.js';
+import verificationRoutes from './routes/verification.js';
 import mediaRoutes from './routes/media.js';
 import { isConnected } from './db.js';
 import downloadRoutes from './routes/download.js';
@@ -225,6 +226,7 @@ app.get('/', (req, res) => {
   app.use('/api/groups', groupRoutes);
   app.use('/api/chats', chatRoutes);
   app.use('/api/users', userRoutes);
+  app.use('/api/verification', verificationRoutes);
   app.use('/api/media', mediaRoutes);
 
   // APK downloads. Mounted outside /api so the path on the page mirrors the

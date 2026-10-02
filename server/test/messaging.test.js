@@ -1,7 +1,14 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
-import { startTestServer, stopTestServer, registerUser, auth, b64 } from './helpers.js';
+import {
+  startTestServer,
+  stopTestServer,
+  registerUser,
+  auth,
+  b64,
+  verifyPair,
+} from './helpers.js';
 
 let app;
 
@@ -27,6 +34,7 @@ describe('messaging', () => {
   test('stores ciphertext and returns it unchanged', async () => {
     const alice = await registerUser(api(), '+10000000301', 21);
     const bob = await registerUser(api(), '+10000000302', 22);
+    await verifyPair(api(), alice, bob);
 
     const sent = await api()
       .post('/api/messages')
@@ -49,6 +57,7 @@ describe('messaging', () => {
   test('a repeated clientMessageId is idempotent, not duplicated', async () => {
     const alice = await registerUser(api(), '+10000000303', 23);
     const bob = await registerUser(api(), '+10000000304', 24);
+    await verifyPair(api(), alice, bob);
 
     const first = await api()
       .post('/api/messages')
@@ -69,6 +78,7 @@ describe('messaging', () => {
   test('a recipient can read the thread and a stranger cannot', async () => {
     const alice = await registerUser(api(), '+10000000305', 25);
     const bob = await registerUser(api(), '+10000000306', 26);
+    await verifyPair(api(), alice, bob);
     const eve = await registerUser(api(), '+10000000307', 27);
 
     await api()
@@ -107,6 +117,7 @@ describe('messaging', () => {
   test('rejects a malformed IV', async () => {
     const alice = await registerUser(api(), '+10000000310', 30);
     const bob = await registerUser(api(), '+10000000311', 31);
+    await verifyPair(api(), alice, bob);
     const res = await api()
       .post('/api/messages')
       .set(auth(alice.token))
@@ -120,6 +131,7 @@ describe('delivery receipts', () => {
   test('delivered and read advance the status', async () => {
     const alice = await registerUser(api(), '+10000000312', 32);
     const bob = await registerUser(api(), '+10000000313', 33);
+    await verifyPair(api(), alice, bob);
 
     const sent = await api()
       .post('/api/messages')
@@ -152,6 +164,7 @@ describe('delivery receipts', () => {
   test("a user cannot mark somebody else's message as read", async () => {
     const alice = await registerUser(api(), '+10000000314', 34);
     const bob = await registerUser(api(), '+10000000315', 35);
+    await verifyPair(api(), alice, bob);
     const eve = await registerUser(api(), '+10000000316', 36);
 
     const sent = await api()
@@ -172,6 +185,7 @@ describe('delivery receipts', () => {
   test('deletes only your own messages', async () => {
     const alice = await registerUser(api(), '+10000000317', 37);
     const bob = await registerUser(api(), '+10000000318', 38);
+    await verifyPair(api(), alice, bob);
     const sent = await api()
       .post('/api/messages')
       .set(auth(alice.token))
@@ -187,6 +201,7 @@ describe('chat list', () => {
   test('returns threads with encrypted previews', async () => {
     const alice = await registerUser(api(), '+10000000401', 41);
     const bob = await registerUser(api(), '+10000000402', 42);
+    await verifyPair(api(), alice, bob);
 
     await api()
       .post('/api/messages')
@@ -207,6 +222,7 @@ describe('groups', () => {
   test('creates a group and sends group ciphertext', async () => {
     const alice = await registerUser(api(), '+10000000501', 51);
     const bob = await registerUser(api(), '+10000000502', 52);
+    await verifyPair(api(), alice, bob);
 
     const created = await api()
       .post('/api/groups')
@@ -242,6 +258,7 @@ describe('groups', () => {
   test('a non-member cannot post to a group', async () => {
     const alice = await registerUser(api(), '+10000000503', 53);
     const eve = await registerUser(api(), '+10000000504', 54);
+    await verifyPair(api(), alice, eve);
     const created = await api()
       .post('/api/groups')
       .set(auth(alice.token))
@@ -265,6 +282,7 @@ describe('groups', () => {
   test('a non-member cannot read the group thread', async () => {
     const alice = await registerUser(api(), '+10000000505', 55);
     const eve = await registerUser(api(), '+10000000506', 56);
+    await verifyPair(api(), alice, eve);
     const created = await api()
       .post('/api/groups')
       .set(auth(alice.token))

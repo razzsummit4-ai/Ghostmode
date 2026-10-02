@@ -227,6 +227,43 @@ class SecureApi {
   Future<Map<String, dynamic>> chatWith(String peerId) =>
       _get('/api/chats/with/$peerId');
 
+  // --- Verification ----------------------------------------------------------
+  //
+  // Every account creates a code in its profile and shares it out of band. A
+  // conversation cannot be opened - in either direction - until the peer's
+  // code has been entered here. The server enforces that; these calls are how
+  // the app satisfies it.
+
+  /// This account's own code, or null when it has not created one.
+  Future<String?> myVerificationCode() async {
+    final body = await _get('/api/verification/code');
+    final code = body['code'];
+    return code == null ? null : '$code';
+  }
+
+  /// Create the code, or replace the existing one when [rotate] is set.
+  Future<String> createVerificationCode({bool rotate = false}) async {
+    final body = await _post('/api/verification/code', {'rotate': rotate});
+    return '${body['code']}';
+  }
+
+  /// Whether this account has already entered [userId]'s code.
+  Future<bool> isVerifiedWith(String userId) async {
+    final body = await _get('/api/verification/$userId');
+    return body['verified'] == true;
+  }
+
+  /// Submit [userId]'s code. Throws ApiException('verification_failed') if it
+  /// is wrong.
+  Future<void> verifyWith(String userId, String code) async {
+    await _post('/api/verification/$userId', {'code': code});
+  }
+
+  /// Withdraw this account's access to [userId].
+  Future<void> revokeVerification(String userId) async {
+    await _delete('/api/verification/$userId');
+  }
+
   // --- Messages --------------------------------------------------------------
 
   /// Persist one encrypted message.

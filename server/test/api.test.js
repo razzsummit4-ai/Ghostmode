@@ -9,6 +9,7 @@ import {
   b64,
   keyBundle,
   TEST_PASSWORD,
+  verifyPair,
 } from './helpers.js';
 
 let app;
@@ -26,6 +27,7 @@ describe('zero-knowledge invariants', () => {
   test('rejects a message body containing a plaintext field', async () => {
     const alice = await registerUser(api(), '+10000000001', 1);
     const bob = await registerUser(api(), '+10000000002', 2);
+    await verifyPair(api(), alice, bob);
 
     const res = await api()
       .post('/api/messages')
@@ -48,6 +50,7 @@ describe('zero-knowledge invariants', () => {
   test('rejects a nested plaintext field inside the header', async () => {
     const alice = await registerUser(api(), '+10000000003', 3);
     const bob = await registerUser(api(), '+10000000004', 4);
+    await verifyPair(api(), alice, bob);
 
     const res = await api()
       .post('/api/messages')
@@ -297,6 +300,7 @@ describe('key distribution', () => {
   test('consuming a pre-key removes it so it can never be replayed', async () => {
     const alice = await registerUser(api(), '+10000000204', 16);
     const bob = await registerUser(api(), '+10000000205', 17);
+    await verifyPair(api(), alice, bob);
 
     const before = await api().get(`/api/keys/${bob.user.id}`).set(auth(alice.token)).expect(200);
     assert.equal(before.body.preKeyCount, 5);
@@ -330,6 +334,7 @@ describe('key distribution', () => {
   test('directory lookup never exposes raw one-time pre-keys', async () => {
     const alice = await registerUser(api(), '+10000000207', 19);
     const bob = await registerUser(api(), '+10000000208', 20);
+    await verifyPair(api(), alice, bob);
     const res = await api().get(`/api/keys/${bob.user.id}`).set(auth(alice.token)).expect(200);
     assert.equal(res.body.oneTimePreKey, undefined);
     assert.ok(res.body.signedPreKey.publicKey);

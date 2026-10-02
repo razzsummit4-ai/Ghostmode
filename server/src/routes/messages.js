@@ -18,6 +18,18 @@ export function directChatId(a, b) {
 
 const isId = (s) => /^[a-f\d]{24}$/i.test(String(s));
 
+/**
+ * Whether this account has entered the peer's verification code.
+ *
+ * `verifiedPeers` is deliberately not `select: false`, so a caller that did
+ * not ask for it still gets an empty list rather than undefined - which would
+ * otherwise read as "not verified" and silently block everyone.
+ */
+function isVerified(user, peer) {
+  const granted = user.verifiedPeers ?? [];
+  return granted.some((id) => String(id) === String(peer._id));
+}
+
 const ciphertext = z.string().min(1).max(200_000);
 const iv = z.string().min(1).max(64).regex(/^[A-Za-z0-9+/=_-]+$/, 'must be base64');
 
@@ -93,10 +105,22 @@ router.post(
       chatId = `group:${group._id}`;
       if (!expiresInSeconds) expiresInSeconds = group.disappearingMessagesSeconds || 0;
     } else {
-      const target = await User.findById(body.receiverId).select('_id');
+      const target = await User.findById(body.receiverId).select('_id verifiedPeers');
       if (!target) throw new HttpError(404, 'receiver_not_found', 'No such recipient.');
       if (String(target._id) === String(sender._id)) {
         throw new HttpError(400, 'cannot_message_self', 'You cannot message yourself.');
+      }
+
+      // The gate: a conversation may only be opened with a peer whose
+      // verification code this account has already entered. Enforced here
+      // rather than in the app, because a client-side check is a suggestion -
+      // anyone with the URL could otherwise skip it.
+      if (!isVerified(req.user, target)) {
+        throw new HttpError(
+          403,
+          'verification_required',
+          'Enter this person\'s verification code before you can message them.',
+        );
       }
       receiverId = target._id;
       chatId = directChatId(sender._id, target._id);
@@ -312,6 +336,19 @@ async function assertChatAccess(chatId, user) {
   }
   if (!parts.includes(String(user._id))) {
     throw new HttpError(403, 'forbidden', 'You are not a participant in this chat.');
+  }
+
+  // Reading is gated as well as sending. Verifying on the way in but leaving
+  // old history readable would make the gate cosmetic: the messages a user is
+  // not yet cleared to receive would already be on their screen.
+  const peerId = parts.find((id) => id !== String(user._id));
+  const me = await User.findById(user._id).select('verifiedPeers').lean();
+  if (peerId && !isVerified(me ?? {}, { _id: peerId })) {
+    throw new HttpError(
+      403,
+      'verification_required',
+      'Enter this person\'s verification code to read this conversation.',
+    );
   }
 }
 

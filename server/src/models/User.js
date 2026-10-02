@@ -100,6 +100,30 @@ const userSchema = new Schema(
 
     lastSeenAt: { type: Date, default: Date.now },
     avatarColor: { type: Number, default: 0 },
+
+    /**
+     * The code this account shares with people who want to talk to it.
+     *
+     * This is a gate, not a credential: it authorises a peer to open a
+     * conversation, and is read out or sent over a channel the two of them
+     * already trust. It is stored in the clear because the owner has to be able
+     * to display it again in order to share it - the same reason a Wi-Fi
+     * password is shown rather than hashed. It grants no access to this
+     * account: it cannot read anything, and it is never used to sign anything.
+     *
+     * `null` means the owner has not created one yet, so nobody can open a
+     * conversation with them.
+     */
+    verificationCode: { type: String, default: null, select: false },
+
+    /**
+     * Peers whose code this account has verified.
+     *
+     * One-directional by design: A verifying B's code says nothing about
+     * whether B may talk to A. Each side grants independently, so a user who
+     * has not handed over their code is not reachable either.
+     */
+    verifiedPeers: { type: [Schema.Types.ObjectId], ref: 'User', default: [] },
   },
   { timestamps: true, strict: 'throw' },
 );
