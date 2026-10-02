@@ -92,47 +92,4 @@ export async function loginUser(request, phone, password = TEST_PASSWORD) {
   return res;
 }
 
-/**
- * Ensure an account has a verification code, returning it.
- *
- * Every account must create one before anyone can open a conversation with it,
- * so tests that message each other have to satisfy that first.
- */
-export async function ensureCode(request, user) {
-  const existing = await request
-    .get('/api/verification/code')
-    .set(auth(user.token))
-    .expect(200);
-  if (existing.body.code) return existing.body.code;
-
-  const created = await request
-    .post('/api/verification/code')
-    .set(auth(user.token))
-    .send({})
-    .expect(200);
-  return created.body.code;
-}
-
-/**
- * Open the channel between two accounts in both directions.
- *
- * Access is one-directional by design, so this grants A access to B and B
- * access to A. Anything a test sends afterwards passes the gate.
- */
-export async function verifyPair(request, a, b) {
-  const codeA = await ensureCode(request, a);
-  const codeB = await ensureCode(request, b);
-
-  await request
-    .post(`/api/verification/${b.user.id}`)
-    .set(auth(a.token))
-    .send({ code: codeB })
-    .expect(200);
-  await request
-    .post(`/api/verification/${a.user.id}`)
-    .set(auth(b.token))
-    .send({ code: codeA })
-    .expect(200);
-}
-
 export const auth = (token) => ({ Authorization: `Bearer ${token}` });

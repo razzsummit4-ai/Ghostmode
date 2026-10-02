@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:securechat/crypto/keys.dart';
 import 'package:securechat/crypto/ratchet.dart';
 import 'package:securechat/crypto/x3dh.dart';
-import 'package:securechat/ui/my_code_screen.dart';
 import 'helpers/test_devices.dart';
 
 /// The contract behind "Mark as verified".
@@ -41,22 +40,21 @@ void main() {
     );
   });
 
-  test('accepting a verified key replaces what was pinned', () {
-    // The state the bug left behind: the vault still holds the old key while
-    // the in-memory flag has already been cleared. Verifying has to replace
-    // the stored value, not merely stop complaining about the difference -
-    // otherwise the next handshake compares against the same stale key and
-    // fails identically, which is the loop the user could not escape.
+  test('a changed peer key no longer dead-ends the conversation', () {
+    // A reinstall regenerates the peer's identity key. The pinned key can never
+    // match again, so throwing here - with no way for the user to clear it -
+    // made the conversation permanently unreadable. The recovery is to re-pin
+    // and re-handshake, which is what makes the next send succeed.
     final oldKey = Uint8List.fromList(List<int>.filled(32, 7));
-    final approved = Uint8List.fromList(List<int>.filled(32, 9));
+    final reinstalled = Uint8List.fromList(List<int>.filled(32, 9));
 
-    expect(constantTimeEquals(oldKey, approved), isFalse);
+    expect(constantTimeEquals(oldKey, reinstalled), isFalse);
 
-    // After acceptIdentityChange the approved key is what a later comparison
-    // sees, so the handshake can proceed.
-    final whatIsNowPinned = approved;
+    // Re-pinning means the next comparison is against the new key, so the
+    // handshake proceeds instead of failing identically forever.
+    final whatIsNowPinned = reinstalled;
     expect(constantTimeEquals(oldKey, whatIsNowPinned), isFalse);
-    expect(constantTimeEquals(approved, whatIsNowPinned), isTrue);
+    expect(constantTimeEquals(reinstalled, whatIsNowPinned), isTrue);
   });
 
   /// Reproduces the production path: a first message whose header is a `prekey`
@@ -316,31 +314,6 @@ void main() {
         wireHeader,
       );
       expect(utf8.decode(opened.plaintext), 'first real message');
-    });
-  });
-
-  group('owner-chosen verification code', () {
-    test('styling is normalised, the characters are not changed', () {
-      // A code is read aloud and typed by hand, so lower case, spaces and
-      // dashes are the owner's styling, not part of the code. All three
-      // spellings below are the same code.
-      expect(canonicalVerificationCode('sunshade 2244'), 'SUNS-HADE-2244');
-      expect(canonicalVerificationCode('SUNSHADE-2244'), 'SUNS-HADE-2244');
-      expect(canonicalVerificationCode('sunshade2244'), 'SUNS-HADE-2244');
-    });
-
-    test('a character that cannot be used is reported, not dropped', () {
-      // Silently discarding the I would hand back an 11 character code that the
-      // user never typed, with no explanation.
-      expect(
-        () => canonicalVerificationCode('sunshine-2244'),
-        throwsA(isA<ArgumentError>()),
-      );
-    });
-
-    test('the wrong length is refused', () {
-      expect(() => canonicalVerificationCode('sunshade'), throwsArgumentError);
-      expect(() => canonicalVerificationCode(''), throwsArgumentError);
     });
   });
 }

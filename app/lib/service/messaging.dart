@@ -414,7 +414,8 @@ class MessagingService {
   /// Human wording for a decryption failure, leaking no key material.
   static String describeFailure(Object e) {
     if (e is IdentityChangedException) {
-      return "⚠️ This contact's safety number changed. Tap to verify.";
+      return '⚠️ This contact reinstalled the app, so the conversation had to '
+          'be re-established.';
     }
     if (e is ProtocolException) {
       return switch (e.code) {

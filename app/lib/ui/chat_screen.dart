@@ -10,7 +10,6 @@ import '../state/chat_store.dart';
 import 'attachment_sheet.dart';
 import 'message_bubble.dart';
 import 'chat_info_screen.dart';
-import 'verify_peer_screen.dart';
 import 'theme.dart';
 
 /// A single conversation.
@@ -45,10 +44,6 @@ class _ChatScreenState extends State<ChatScreen> {
   final _composerFocus = FocusNode();
 
   bool _loading = true;
-
-  /// True when the peer's verification code has not been entered yet, so the
-  /// conversation is held behind the gate instead of being loaded.
-  bool _needsCode = false;
   String? _error;
 
   /// Self-addressed encryption key id, unused for 1:1 but kept per chat so a
@@ -83,45 +78,15 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _loading = true;
       _error = null;
-      _needsCode = false;
     });
-
-    // The gate, checked before anything is fetched. The server refuses the read
-    // and the send regardless, so this is about not showing a dead conversation
-    // and about giving the user somewhere to put the code.
-    final peer = widget.peerId;
-    if (peer != null) {
-      try {
-        final verified = await state.api.isVerifiedWith(peer);
-        if (!mounted) return;
-        if (!verified) {
-          setState(() {
-            _needsCode = true;
-            _loading = false;
-          });
-          return;
-        }
-      } on ApiException {
-        // If the status call itself fails, fall through: loadThread produces
-        // the real error, and the gate is enforced server-side regardless.
-      }
-    }
 
     try {
       await state.messaging.loadThread(widget.chatId);
       _disappearingSeconds =
           state.chats.summary(widget.chatId)?.disappearingMessagesSeconds ?? 0;
     } on ApiException catch (e) {
-      // The server can still refuse if the grant was withdrawn between the
-      // check above and this call.
       if (!mounted) return;
-      setState(() {
-        if (e.code == 'verification_required') {
-          _needsCode = true;
-        } else {
-          _error = e.message ?? e.code;
-        }
-      });
+      setState(() => _error = e.message ?? e.code);
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     } finally {
@@ -130,20 +95,6 @@ class _ChatScreenState extends State<ChatScreen> {
         _scrollToBottom();
       }
     }
-  }
-
-  /// Ask for the peer's code, then reload if it was accepted.
-  Future<void> _enterCode() async {
-    final peer = widget.peerId;
-    if (peer == null) return;
-
-    final ok = await VerifyPeerScreen.open(
-      context,
-      peerId: peer,
-      peerName: widget.title,
-    );
-    if (!mounted || !ok) return;
-    await _load();
   }
 
   /// A message arrived on the live socket.
@@ -305,12 +256,6 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         actions: [
-          if (!widget.isGroup)
-            IconButton(
-              tooltip: 'Verify safety number',
-              icon: const Icon(Icons.shield_outlined),
-              onPressed: _openSafetyNumber,
-            ),
           IconButton(
             tooltip: 'Chat info',
             icon: const Icon(Icons.info_outline),
@@ -331,10 +276,10 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           EncryptionBanner(
-            onTap: widget.isGroup ? _showGroupInfo : _openSafetyNumber,
+            onTap: _showGroupInfo,
             subtitle: widget.isGroup
                 ? 'End-to-end encrypted group. Tap for info.'
-                : 'End-to-end encrypted. Tap to verify safety number.',
+                : 'End-to-end encrypted. Tap for info.',
           ),
           Expanded(child: _buildBody(state, rows, peerTyping)),
           if (_disappearingSeconds > 0)
@@ -362,47 +307,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // Held behind the gate: nothing is fetched, nothing is shown, and the only
-    // thing offered is where to enter the peer's code.
-    if (_needsCode && rows.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.lock_person_outlined,
-                  size: 46, color: AppColors.accent),
-              const SizedBox(height: 18),
-              Text(
-                'Verification required',
-                style: const TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Enter the verification code ${widget.title} created, then you '
-                'can read and send messages in this chat.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  height: 1.5,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _enterCode,
-                icon: const Icon(Icons.vpn_key_outlined, size: 18),
-                label: const Text('Enter verification code'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
     if (_error != null && rows.isEmpty) {
       return Center(
         child: Padding(
@@ -544,14 +448,6 @@ class _ChatScreenState extends State<ChatScreen> {
       expiresInSeconds: _disappearingSeconds,
     );
     if (mounted) _scrollToBottom();
-  }
-
-  void _openSafetyNumber() {
-    final peer = widget.peerId;
-    if (peer == null) return;
-    // The safety-number screen is gone; the peer's code is entered through the
-    // same gate the conversation itself is held behind.
-    _enterCode();
   }
 
   void _showGroupInfo() {

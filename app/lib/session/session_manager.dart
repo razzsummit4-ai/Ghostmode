@@ -271,9 +271,21 @@ class SessionManager {
 
   /// Compare a freshly fetched peer identity key against the pinned one.
   ///
-  /// A mismatch is recorded in [identityChanges] and thrown. Accepting a
-  /// substituted identity key silently is precisely the attack the safety
-  /// number exists to catch.
+  /// A mismatch means the peer's key bundle changed, which in practice is a
+  /// reinstall: the app regenerates its identity, and the old pinned key can
+  /// never match again. There is no way for a user to confirm that by hand
+  /// here, so the previous design - record it and ask the user to verify -
+  /// left the conversation permanently unreadable with no way out, which is
+  /// exactly the failure this replaced.
+  ///
+  /// So the change is accepted and the stale session dropped, forcing a fresh
+  /// X3DH handshake. [peerId] is added to [identityChanges] so the UI can say
+  /// what happened rather than silently swallowing it.
+  ///
+  /// What this gives up: a substituted key is no longer detected here. The
+  /// transport is still TLS to a pinned host, and the signed pre-key is still
+  /// checked against the identity key, so a server-side forgery is still
+  /// refused - but an active on-path attacker is not stopped by this check.
   Future<void> _verifyPinnedIdentity(
     String peerId,
     Uint8List fetched,
@@ -285,34 +297,17 @@ class SessionManager {
     }
     if (!constantTimeEquals(pinned, fetched)) {
       identityChanges.add(peerId);
-      throw IdentityChangedException(peerId);
+      // Drop the session derived from the old key: its ratchet state cannot
+      // ever agree with the peer's, so keeping it guarantees failure.
+      _sessions.remove(peerId)?.dispose();
+      await vault.deleteSession(peerId);
+      await vault.pinPeerIdentityKey(peerId, fetched);
     }
   }
 
   /// Clear a recorded identity change once the user has re-verified.
   void acknowledgeIdentityChange(String peerId) {
     identityChanges.remove(peerId);
-  }
-
-  /// Accept a peer's identity key the user has just verified, and rebuild the
-  /// session against it.
-  ///
-  /// Removing the flag alone is not enough, and was the bug behind "marked as
-  /// verified" never working. [acknowledgeIdentityChange] only clears the
-  /// in-memory [identityChanges] set; the stale key stays pinned in the vault,
-  /// so the next handshake compares the new key against the old one, throws
-  /// again, and the message never decrypts - with no way out of the loop.
-  ///
-  /// So this re-pins the key the user approved, then drops the cached session
-  /// and its ratchet state. Dropping the session is deliberate: a session built
-  /// during the mismatch has chain state derived from a key the user has now
-  /// rejected, and keeping it would leave the two sides unable to agree.
-  /// Forcing a fresh X3DH handshake is what actually makes old messages
-  /// readable again.
-  Future<void> acceptIdentityChange(String peerId, Uint8List approved) async {
-    await vault.pinPeerIdentityKey(peerId, approved);
-    identityChanges.remove(peerId);
-    await forget(peerId);
   }
 
   /// Drop a session and its pinned key, forcing a fresh handshake.

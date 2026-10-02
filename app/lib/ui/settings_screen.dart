@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../core/config.dart';
 import '../state/app_state.dart';
-import 'my_code_screen.dart';
 import 'server_picker_screen.dart';
 import 'theme.dart';
 
@@ -25,19 +24,6 @@ class SettingsScreen extends StatelessWidget {
             fingerprint: state.messaging.localFingerprint,
           ),
           const SizedBox(height: 8),
-          const _SectionLabel('Verification'),
-          ListTile(
-            leading: const Icon(Icons.vpn_key_outlined),
-            title: const Text('My verification code'),
-            subtitle: Text(
-              'Create the code you share with people who want to message you',
-              style: const TextStyle(fontSize: 12.5),
-            ),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MyVerificationCodeScreen()),
-            ),
-          ),
-          const Divider(),
           ListTile(
             leading: const Icon(Icons.fingerprint),
             title: const Text('My identity fingerprint'),

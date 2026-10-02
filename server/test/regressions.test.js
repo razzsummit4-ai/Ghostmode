@@ -9,8 +9,6 @@ import {
   b64,
   keyBundle,
   TEST_PASSWORD,
-  verifyPair,
-  ensureCode,
 } from './helpers.js';
 import { hashPassword, verifyPassword } from '../src/lib/password.js';
 
@@ -73,7 +71,7 @@ describe('regressions', () => {
 // those users received a bare JSON object with no download link and no sign of
 // what to do. A browser User-Agent now counts too, while the Flutter app - which
 // sends `Dart/<v> (dart:io)` and `Accept: application/json` - must still get JSON.
-describe('verification gate', () => {
+describe('no verification gate', () => {
   const send = (token, receiverId, id) =>
     api()
       .post('/api/messages')
@@ -87,214 +85,49 @@ describe('verification gate', () => {
         envelope: { type: 'text' },
       });
 
-  test('a fresh account has no code until it creates one', async () => {
+  // The separator must match directChatId() in the route.
+  const chatIdOf = (a, b) => [a, b].sort().join('|');
+
+  test('two accounts can message each other with nothing set up first', async () => {
+    // The gate required a code exchange before the first message in either
+    // direction, so a new pair simply could not talk until both people acted.
     const alice = await registerUser(api(), '+10000007001', 71);
-    const res = await api().get('/api/verification/code').set(auth(alice.token)).expect(200);
-    assert.equal(res.body.code, null);
+    const bob = await registerUser(api(), '+10000007002', 72);
 
-    const made = await api()
-      .post('/api/verification/code')
-      .set(auth(alice.token))
-      .send({})
-      .expect(200);
-    assert.match(made.body.code, /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    await send(alice.token, bob.user.id, 'no-gate-alice-1').expect(201);
+    await send(bob.token, alice.user.id, 'no-gate-bob-1').expect(201);
   });
 
-  test('creating a code twice keeps the same one unless rotating', async () => {
-    const alice = await registerUser(api(), '+10000007002', 72);
-    const first = await api().post('/api/verification/code').set(auth(alice.token)).send({});
-    const again = await api().post('/api/verification/code').set(auth(alice.token)).send({});
-    assert.equal(again.body.code, first.body.code, 're-posting must not silently rotate');
-
-    const rotated = await api()
-      .post('/api/verification/code')
-      .set(auth(alice.token))
-      .send({ rotate: true })
-      .expect(200);
-    assert.notEqual(rotated.body.code, first.body.code, 'rotate must change the code');
-  });
-
-  test('a message is refused until the peer code is entered', async () => {
+  test('reading a conversation is not gated either', async () => {
     const alice = await registerUser(api(), '+10000007003', 73);
     const bob = await registerUser(api(), '+10000007004', 74);
 
-    const blocked = await send(alice.token, bob.user.id, 'gate-blocked-01');
-    assert.equal(blocked.status, 403);
-    assert.equal(blocked.body.code, 'verification_required');
+    await send(alice.token, bob.user.id, 'read-gate-alice-1').expect(201);
 
-    const codeB = await ensureCode(api(), bob);
-    await api()
-      .post(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .send({ code: codeB })
+    const thread = await api()
+      .get(`/api/messages/${chatIdOf(alice.user.id, bob.user.id)}`)
+      .set(auth(bob.token))
       .expect(200);
-
-    const allowed = await send(alice.token, bob.user.id, 'gate-allowed-01');
-    assert.equal(allowed.status, 201);
+    assert.equal(thread.body.messages.length, 1);
   });
 
-  test('a wrong code is refused and reveals nothing', async () => {
+  test('the verification endpoints are gone', async () => {
     const alice = await registerUser(api(), '+10000007005', 75);
-    const bob = await registerUser(api(), '+10000007006', 76);
-    await ensureCode(api(), bob);
-
-    const wrong = await api()
-      .post(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .send({ code: 'ZZZZ-ZZZZ-ZZZZ' })
-      .expect(403);
-    assert.equal(wrong.body.code, 'verification_failed');
-
-    const status = await api()
-      .get(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .expect(200);
-    assert.equal(status.body.verified, false);
-  });
-
-  test('a code typed in lower case or without dashes is accepted', async () => {
-    const alice = await registerUser(api(), '+10000007007', 77);
-    const bob = await registerUser(api(), '+10000007008', 78);
-    const code = await ensureCode(api(), bob);
-
+    await api().get('/api/verification/code').set(auth(alice.token)).expect(404);
     await api()
-      .post(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .send({ code: code.toLowerCase().replace(/-/g, ' ') })
-      .expect(200);
-  });
-
-  test('reading a conversation is gated too, not just sending', async () => {
-    const alice = await registerUser(api(), '+10000007009', 79);
-    const bob = await registerUser(api(), '+10000007010', 80);
-
-    // Only Alice opens the channel to Bob - Bob has not answered her code.
-    const codeB = await ensureCode(api(), bob);
-    await api()
-      .post(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .send({ code: codeB })
-      .expect(200);
-
-    const chatId = [alice.user.id, bob.user.id].sort().join('|');
-    await send(alice.token, bob.user.id, 'gate-read-01').expect(201);
-
-    // Bob has not entered Alice's code, so he may not read what he was sent.
-    const blocked = await api().get(`/api/messages/${chatId}`).set(auth(bob.token));
-    assert.equal(blocked.status, 403);
-    assert.equal(blocked.body.code, 'verification_required');
-
-    const codeA = await ensureCode(api(), alice);
-    await api()
-      .post(`/api/verification/${alice.user.id}`)
-      .set(auth(bob.token))
-      .send({ code: codeA })
-      .expect(200);
-
-    const allowed = await api().get(`/api/messages/${chatId}`).set(auth(bob.token)).expect(200);
-    assert.equal(allowed.body.messages.length, 1);
-  });
-
-  test('a chosen code is accepted and stored canonically', async () => {
-    const alice = await registerUser(api(), '+10000007020', 90);
-    const res = await api()
       .post('/api/verification/code')
       .set(auth(alice.token))
-      .send({ code: 'sunshade-2244' })
-      .expect(200);
-    // Stored canonically: upper-cased, non-alphanumerics dropped, and grouped
-    // in fours. 12 characters become SUNS-HADE-2244.
-    assert.equal(res.body.code, 'SUNS-HADE-2244');
-
-    // And it must be usable as a gate by the other side.
-    const bob = await registerUser(api(), '+10000007021', 91);
-    const codeB = await ensureCode(api(), bob);
-    await api()
-      .post(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .send({ code: codeB })
-      .expect(200);
-
-    // Alice's own chosen code is what a peer must present to reach her.
-    const carol = await registerUser(api(), '+10000007025', 95);
-    await api()
-      .post(`/api/verification/${alice.user.id}`)
-      .set(auth(carol.token))
-      .send({ code: 'sunshade 2244' })
-      .expect(200);
+      .send({})
+      .expect(404);
   });
 
-  test('a code with a character that cannot be used is named, not truncated', async () => {
-    // "SUNSHINE" contains an I. Dropping it silently would hand back a
-    // shorter code than the user typed with no explanation.
-    const alice = await registerUser(api(), '+10000007026', 96);
-    const res = await api()
-      .post('/api/verification/code')
-      .set(auth(alice.token))
-      .send({ code: 'sunshine-2244' })
-      .expect(400);
-    assert.equal(res.body.code, 'weak_verification_code');
-    assert.match(res.body.message, /I/);
-  });
-
-  test('a chosen code is still held to a real minimum', async () => {
-    const alice = await registerUser(api(), '+10000007022', 92);
-    for (const bad of ['AAAAAAAA', 'ABCD', 'ABCDEFGH', '12', 'OOOO-IIII-JJJJ']) {
-      const res = await api()
-        .post('/api/verification/code')
-        .set(auth(alice.token))
-        .send({ code: bad });
-      assert.equal(
-        res.status,
-        400,
-        `"${bad}" must be refused, got ${res.status}`,
-      );
-    }
-  });
-
-  test('verifying returns the peer identity key so a stale pin can be replaced', async () => {
-    // Without this the next send still refuses against the pinned key from
-    // before the reinstall, which is why messages did not go out after a
-    // successful verification.
-    const alice = await registerUser(api(), '+10000007023', 93);
-    const bob = await registerUser(api(), '+10000007024', 94);
-
-    const bundle = await api()
-      .post('/api/keys')
-      .set(auth(bob.token))
-      .send(keyBundle(94))
-      .expect(201);
-
-    const codeB = await ensureCode(api(), bob);
-    const res = await api()
-      .post(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .send({ code: codeB })
-      .expect(200);
-
-    assert.equal(res.body.verified, true);
-    assert.ok(res.body.identityKey, 'the peer identity key must be returned');
-  });
-
-  test('granting one direction does not grant the other', async () => {
-    const alice = await registerUser(api(), '+10000007011', 81);
-    const bob = await registerUser(api(), '+10000007012', 82);
-
-    const codeB = await ensureCode(api(), bob);
-    await api()
-      .post(`/api/verification/${bob.user.id}`)
-      .set(auth(alice.token))
-      .send({ code: codeB })
-      .expect(200);
-
-    // Alice entered Bob's code, so Alice may send.
-    await send(alice.token, bob.user.id, 'one-way-01').expect(201);
-
-    // Bob has not entered Alice's code, so what Alice just sent stays unread.
-    const chatId = [alice.user.id, bob.user.id].sort().join('|');
-    const blocked = await api().get(`/api/messages/${chatId}`).set(auth(bob.token));
-    assert.equal(blocked.status, 403);
-    assert.equal(blocked.body.code, 'verification_required');
+  test('a user document no longer carries verification fields', async () => {
+    // strict: 'throw' means a write naming a removed field is rejected outright,
+    // which stops a stale write path from silently resurrecting them.
+    const alice = await registerUser(api(), '+10000007006', 76);
+    const res = await api().get('/api/auth/me').set(auth(alice.token)).expect(200);
+    assert.equal(res.body.verificationCode, undefined);
+    assert.equal(res.body.verifiedPeers, undefined);
   });
 });
 
@@ -459,7 +292,6 @@ describe('regressions (network)', () => {
   test('chat list resolves the peer for a thread I started', async () => {
     const alice = await registerUser(api(), '+10000009001', 11);
     const bob = await registerUser(api(), '+10000009002', 12);
-    await verifyPair(api(), alice, bob);
     const chatId = [alice.user.id, bob.user.id].sort().join('|');
 
     await api()
@@ -487,7 +319,6 @@ describe('regressions (network)', () => {
   test('a malformed pagination cursor is a 400, not a 500', async () => {
     const alice = await registerUser(api(), '+10000009004', 14);
     const bob = await registerUser(api(), '+10000009005', 15);
-    await verifyPair(api(), alice, bob);
 
     await api()
       .post('/api/messages')
