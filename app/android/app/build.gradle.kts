@@ -36,8 +36,22 @@ android {
 
     defaultConfig {
         applicationId = "com.securechat.securechat"
-        // 24 is the first API level where the Android Keystore backs the
-        // encrypted shared preferences flutter_secure_storage requires.
+        // 24 is Android 7.0, and it is a floor rather than a preference.
+        //
+        // flutter_secure_storage v11 - which is where this app's private keys
+        // live - sets minSdk 24 itself, because below API 24 the Android
+        // Keystore cannot back the encrypted preferences it depends on.
+        // Gradle fails the build if this module asks for less, and forcing it
+        // lower would mean downgrading the component that protects every
+        // identity key on the device. Older plugins (v9) allowed API 19, but
+        // that path should not be taken for key storage.
+        //
+        // Consequence: a handset below Android 7.0 cannot install this app at
+        // all, and the installer only says "app not installed". The landing page
+        // states the requirement so that is visible before anyone tries.
+        //
+        // This is unrelated to CPU architecture: a 32-bit phone on Android 7 or
+        // newer installs fine, it just needs the armeabi-v7a build.
         minSdk = 24
         targetSdk = 37
         versionCode = flutter.versionCode

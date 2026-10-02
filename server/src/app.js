@@ -14,7 +14,7 @@ import userRoutes from './routes/users.js';
 import mediaRoutes from './routes/media.js';
 import { isConnected } from './db.js';
 import downloadRoutes from './routes/download.js';
-import { DOWNLOADS } from './routes/downloads.js';
+import { DOWNLOADS, MIN_ANDROID } from './routes/downloads.js';
 
 /**
  * Escape text going into the landing page.
@@ -68,11 +68,15 @@ function landingPage(host, dbUp, proto) {
   // second host and following a cross-site redirect, and that hop is what fails
   // on mobile while the same link works on a laptop. Serving it from the origin
   // the user is already on removes that hop entirely.
+  //
+  // Every architecture is offered. A 32-bit phone cannot install a 64-bit APK
+  // and says only "app not installed", so a page that lists just the modern
+  // build leaves those users with no way forward.
   const downloads = DOWNLOADS.map(
-    ({ file, label, size }) =>
+    ({ file, label, hint, size }) =>
       `<a class="dl" href="/download/${encodeURIComponent(file)}" download="${escapeHtml(file)}">` +
       `<span class="dlname">${escapeHtml(label)}</span>` +
-      `<span class="dlmeta">${escapeHtml(size)} &middot; Android APK</span></a>`,
+      `<span class="dlmeta">${escapeHtml(size)} &middot; ${escapeHtml(hint)}</span></a>`,
   ).join('');
 
   return `<!doctype html>
@@ -103,8 +107,10 @@ function landingPage(host, dbUp, proto) {
 
     <h2>Get the app</h2>
     ${downloads}
-    <p class="hint">Android will ask you to allow installs from this browser. Both builds are
-      signed with the same key, so installing over an older copy keeps your keys and chats.</p>
+    <p class="hint">Requires Android ${escapeHtml(MIN_ANDROID)} or newer.</p>
+    <p class="hint">If a build will not install, use <b>Universal</b> - it contains
+      every CPU type. If it still fails, your Android is older than
+      ${escapeHtml(MIN_ANDROID)}.</p>
 
     <h2>Connect</h2>
     <p>Open the app, go to <b>Settings &rarr; Server address</b>, and enter:</p>
