@@ -11,7 +11,7 @@
  * Bump RELEASE_TAG when cutting a new build, or the server keeps serving the
  * old binaries.
  */
-export const RELEASE_TAG = 'v1.0.0';
+export const RELEASE_TAG = 'v1.0.1';
 
 /** Lowest Android this build runs on. Below this the installer refuses it. */
 export const MIN_ANDROID = '7.0 (API 24)';
@@ -22,27 +22,27 @@ export const DOWNLOADS = [
     label: 'Modern phone (64-bit)',
     hint: 'Most phones from 2017 onward. Smallest download.',
     size: '19 MB',
-    bytes: 19989866,
+    bytes: 19989870,
   },
   {
     file: 'SecureChat-armeabi-v7a.apk',
     label: 'Older phone (32-bit)',
     hint: 'Required if the 64-bit build will not install - many phones before 2017 are 32-bit.',
     size: '17 MB',
-    bytes: 17414966,
+    bytes: 17414970,
   },
   {
-    file: 'SecureChat-1.0.0.apk',
+    file: 'SecureChat-universal.apk',
     label: 'Universal - works on every device',
     hint: 'Contains all CPU types. Use this if you are unsure, or if the others fail.',
     size: '53 MB',
-    bytes: 55684048,
+    bytes: 55880807,
   },
   {
     file: 'SecureChat-x86_64.apk',
     label: 'Emulator only',
     hint: 'For an Android emulator on a computer, not for a real phone.',
     size: '20 MB',
-    bytes: 21408102,
+    bytes: 21473642,
   },
 ];
