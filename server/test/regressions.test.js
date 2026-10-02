@@ -151,6 +151,34 @@ describe('root content negotiation', () => {
     assert.equal(res.status, 404);
     assert.equal(res.body.error, 'not_found');
   });
+
+  // Bug 10: the signed-URL cache was a single shared slot rather than one per
+  // asset, so the first build requested populated it and every later build was
+  // served that file's bytes under its own filename - a 64-bit phone received
+  // the 32-bit build and the install failed on a device that is supported.
+  // Asserting the URL mapping keeps that guarantee without moving ~100 MB of
+  // APK through the network, which is not something a test suite should do.
+  test('each build maps to its own release URL', async () => {
+    const { DOWNLOADS } = await import('../src/routes/downloads.js');
+    const { releaseUrlFor } = await import('../src/routes/download.js');
+    assert.ok(DOWNLOADS.length >= 2, 'need at least two builds to prove the bug');
+
+    const urls = new Map();
+    for (const entry of DOWNLOADS) {
+      const url = releaseUrlFor(entry.file);
+      assert.equal(
+        urls.has(url),
+        false,
+        `${entry.file} shares a URL with ${urls.get(url) ?? 'nothing'} - ` +
+          'that is what made one build serve another build\'s bytes',
+      );
+      urls.set(url, entry.file);
+      assert.ok(
+        url.endsWith(encodeURIComponent(entry.file)),
+        `${entry.file} must resolve to its own asset, got ${url}`,
+      );
+    }
+  });
 });
 
 describe('regressions (media)', () => {

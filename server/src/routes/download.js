@@ -18,14 +18,32 @@ const FETCH_TIMEOUT_MS = 120_000;
  *
  * Only ever holds values fetched from GitHub itself - no request data is part
  * of the key, so this cannot be used to make the server fetch arbitrary URLs.
+ *
+ * Keyed BY ASSET. A single shared slot looks like an easy optimisation and is a
+ * correctness bug: the first request for one build populates it, and the next
+ * request for a different build returns that earlier signed URL - so a phone
+ * asking for the 64-bit APK is handed the 32-bit file's bytes under the right
+ * filename. An installer then fails on a device that is actually supported.
  */
-let cached = { url: null, expiresAt: 0 };
+const cache = new Map();
+
+/**
+ * The GitHub release URL for one build.
+ *
+ * Exported so the "one URL per asset" rule can be tested directly. A test that
+ * proves this by downloading every APK would move ~100 MB through the network
+ * and time out; asserting the mapping is the same guarantee without the cost.
+ */
+export function releaseUrlFor(asset) {
+  return `https://github.com/razzsummit4-ai/Ghostmode/releases/download/${RELEASE_TAG}/${encodeURIComponent(asset)}`;
+}
 
 async function resolveUpstream(asset) {
   const now = Date.now();
-  if (cached.url && cached.expiresAt - now > 5 * 60_000) return cached.url;
+  const hit = cache.get(asset);
+  if (hit && hit.expiresAt - now > 5 * 60_000) return hit.url;
 
-  const releaseUrl = `https://github.com/razzsummit4-ai/Ghostmode/releases/download/${RELEASE_TAG}/${encodeURIComponent(asset)}`;
+  const releaseUrl = releaseUrlFor(asset);
 
   const res = await fetch(releaseUrl, {
     redirect: 'follow',
@@ -42,9 +60,9 @@ async function resolveUpstream(asset) {
   // Drain and discard so the connection is released rather than left hanging.
   await res.arrayBuffer().catch(() => {});
 
-  cached = { url: res.url, expiresAt };
+  cache.set(asset, { url: res.url, expiresAt });
   logger.info('download.upstream_resolved', { asset, expiresAt: new Date(expiresAt).toISOString() });
-  return cached.url;
+  return res.url;
 }
 
 /**
